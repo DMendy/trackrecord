@@ -1,0 +1,25 @@
+[
+  {
+    "id": "15a3e87d-7366-4148-9971-a6b8b1422f34",
+    "timestamp": "2026-05-23T22:36:34.096Z",
+    "symbol": "BTCUSD",
+    "direction": "SHORT",
+    "timeframe": "4H",
+    "entry": 76988,
+    "sl": 77507,
+    "tp1": 75000,
+    "tp2": 74192,
+    "rr": 4.07,
+    "note": 7.5,
+    "pillars": {
+      "prix": true,
+      "momentum": "partial",
+      "structure": true
+    },
+    "comment": "Canal baissier 4H + fibo 0.618 + zone cyan. Stoch 4H pas encore OB. Trendline 5min tracée.",
+    "status": "open",
+    "result_price": null,
+    "pnl_pct": null,
+    "closed_at": null
+  }
+]
