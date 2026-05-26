@@ -22,4 +22,30 @@
     "pnl_pct": null,
     "closed_at": null
   }
+,
+  {
+    "id": "a4f2c91e-3b87-4d56-8e20-7c1d9f3a6b02",
+    "timestamp": "2026-05-25T00:00:00.000Z",
+    "symbol": "NZDCAD",
+    "direction": "SHORT",
+    "timeframe": "4H",
+    "entry": 0.81104,
+    "sl": null,
+    "tp1": 0.80833,
+    "tp2": null,
+    "rr": null,
+    "note": null,
+    "pillars": {
+      "prix": true,
+      "momentum": true,
+      "structure": true
+    },
+    "comment": "0.618 fibo 4H + zone résistance. Bec de canard stoch + marteau H1. Cassure trendline 15min + retour mini fibo. Corrélation AUDJPY vérifiée (AUDJPY écarté car structure ambiguë).",
+    "status": "win",
+    "result_price": 0.80833,
+    "pnl_pips": 27.1,
+    "pnl_pct": 0.33,
+    "closed_at": "2026-05-26T00:00:00.000Z",
+    "image_url": "/uploads/nzdcad_result.png"
+  }
 ]
