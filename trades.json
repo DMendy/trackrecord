@@ -33,7 +33,7 @@
     "sl": null,
     "tp1": 0.80833,
     "tp2": null,
-    "rr": null,
+    "rr": 4.11,
     "note": null,
     "pillars": {
       "prix": true,
@@ -41,7 +41,7 @@
       "structure": true
     },
     "comment": "0.618 fibo 4H + zone résistance. Bec de canard stoch + marteau H1. Cassure trendline 15min + retour mini fibo. Corrélation AUDJPY vérifiée (AUDJPY écarté car structure ambiguë).",
-    "status": "win",
+    "status": "closed",
     "result_price": 0.80833,
     "pnl_pips": 27.1,
     "pnl_pct": 0.33,
