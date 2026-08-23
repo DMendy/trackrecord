@@ -261,22 +261,42 @@ app.put('/api/prop-firm', (req, res) => {
 // Payload shape is not assumed — whatever JSON the scanner sends is stored as-is
 // under `payload`, so Claude can interpret it when reviewing on demand.
 app.post('/api/scanner-alerts', (req, res) => {
-  const alert = {
-    id: randomUUID(),
-    received_at: new Date().toISOString(),
-    status: 'pending', // 'pending' | 'reviewed'
-    reviewed_at: null,
-    verdict: null, // e.g. 'valid_setup' | 'rejected'
-    note: null,
-    payload: req.body,
-  }
+  // harmonicpattern.com sends { msg_type, data: [...] } — one message can carry
+  // several pattern notifications at once. Fall back to treating the whole body
+  // as a single item for any other scanner that might post here later.
+  const items = Array.isArray(req.body?.data) ? req.body.data : [req.body]
 
   const alerts = readScannerAlerts()
-  alerts.push(alert)
-  writeScannerAlerts(alerts)
-  broadcast('scanner_alert_received', alert)
+  const created = items.map(item => {
+    const alert = {
+      id: randomUUID(),
+      received_at: new Date().toISOString(),
+      status: 'pending', // 'pending' | 'reviewed'
+      reviewed_at: null,
+      verdict: null, // e.g. 'valid_setup' | 'rejected'
+      note: null,
+      pattern_type: item.patterntype ?? null,   // 'bullish' | 'bearish'
+      pattern_name: item.patternname ?? null,   // e.g. 'deep crab'
+      pattern_class: item.patternclass ?? null, // 'harmonic' | 'chart' | ...
+      pattern_status: item.status ?? null,      // 'complete' | ...
+      symbol: item.displaySymbol ?? item.symbol ?? null,
+      broker_symbol: item.symbol ?? null,
+      timeframe: item.timeframe ?? null,
+      entry: item.entry ?? null,
+      stoploss: item.stoploss ?? null,
+      profit1: item.profit1 ?? null,
+      profit2: item.profit2 ?? null,
+      source_url: item.url ?? null,
+      payload: item,
+    }
+    alerts.push(alert)
+    return alert
+  })
 
-  res.status(201).json(alert)
+  writeScannerAlerts(alerts)
+  created.forEach(alert => broadcast('scanner_alert_received', alert))
+
+  res.status(201).json({ received: created.length, alerts: created })
 })
 
 // GET alerts, optionally filtered by status (?status=pending)
