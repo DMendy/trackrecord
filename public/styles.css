@@ -454,7 +454,7 @@ h1 {
 
 .analytics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -499,6 +499,7 @@ h1 {
 
 .bar-fill.blue { background: var(--blue); box-shadow: 0 0 10px rgba(111, 162, 255, 0.35); }
 .bar-fill.violet { background: var(--violet); box-shadow: 0 0 10px rgba(177, 138, 255, 0.35); }
+.bar-fill.green { background: var(--green); box-shadow: 0 0 10px rgba(79, 216, 160, 0.35); }
 
 .equity-total {
   font-size: 15px;
@@ -794,8 +795,7 @@ h1 {
 /* ---------- Responsive ---------- */
 
 @media (max-width: 1100px) {
-  .stats,
-  .analytics {
+  .stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

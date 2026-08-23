@@ -60,22 +60,28 @@ createApp({
   },
 
   computed: {
-    pairStats() {
-      const counts = this.countBy('symbol')
-      return this.topBars(counts, 6)
-    },
-
-    rrStats() {
-      const buckets = { '<1R': 0, '1-2R': 0, '2-3R': 0, '3R+': 0 }
+    pillarCompliance() {
+      const total = this.trades.length
+      if (!total) return { total: 0, prixPct: 0, momentumPct: 0, structurePct: 0, fullPct: 0 }
+      const score = value => (value === true ? 1 : value === 'partial' ? 0.5 : 0)
+      let prixSum = 0
+      let momentumSum = 0
+      let structureSum = 0
+      let fullCount = 0
       this.trades.forEach(trade => {
-        const rr = Number(trade.rr)
-        if (!Number.isFinite(rr)) return
-        if (rr < 1) buckets['<1R'] += 1
-        else if (rr < 2) buckets['1-2R'] += 1
-        else if (rr < 3) buckets['2-3R'] += 1
-        else buckets['3R+'] += 1
+        const pillars = trade.pillars || {}
+        prixSum += score(pillars.prix)
+        momentumSum += score(pillars.momentum)
+        structureSum += score(pillars.structure)
+        if (pillars.prix === true && pillars.momentum === true && pillars.structure === true) fullCount += 1
       })
-      return this.topBars(buckets, 4)
+      return {
+        total,
+        prixPct: Math.round((prixSum / total) * 100),
+        momentumPct: Math.round((momentumSum / total) * 100),
+        structurePct: Math.round((structureSum / total) * 100),
+        fullPct: Math.round((fullCount / total) * 100),
+      }
     },
 
     closedTradesByDate() {
@@ -231,22 +237,6 @@ createApp({
 
     async refreshStats() {
       this.stats = await fetch(apiUrl('/api/stats')).then(r => r.json())
-    },
-
-    countBy(field) {
-      return this.trades.reduce((acc, trade) => {
-        const key = trade[field] || 'Non defini'
-        acc[key] = (acc[key] || 0) + 1
-        return acc
-      }, {})
-    },
-
-    topBars(counts, limit) {
-      const max = Math.max(1, ...Object.values(counts))
-      return Object.entries(counts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, limit)
-        .map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }))
     },
 
     shiftMonth(delta) {
@@ -439,21 +429,22 @@ createApp({
           </article>
 
           <article class="panel chart">
-            <div class="section-head"><h2>Paires les plus tradées</h2></div>
-            <div class="bars">
-              <div v-for="item in pairStats" :key="item.label" class="bar-label">
-                <span>{{ item.label }}</span><div class="bar-track"><div class="bar-fill blue" :style="{ width: item.pct + '%' }"></div></div><strong>{{ item.value }}</strong>
+            <div class="section-head">
+              <h2>Conformité ATM</h2>
+              <span class="equity-total" :class="{ good: pillarCompliance.fullPct >= 70, bad: pillarCompliance.fullPct < 40 }">{{ pillarCompliance.fullPct }}% conforme</span>
+            </div>
+            <div v-if="pillarCompliance.total" class="bars">
+              <div class="bar-label">
+                <span>Prix</span><div class="bar-track"><div class="bar-fill blue" :style="{ width: pillarCompliance.prixPct + '%' }"></div></div><strong>{{ pillarCompliance.prixPct }}%</strong>
+              </div>
+              <div class="bar-label">
+                <span>Momentum</span><div class="bar-track"><div class="bar-fill violet" :style="{ width: pillarCompliance.momentumPct + '%' }"></div></div><strong>{{ pillarCompliance.momentumPct }}%</strong>
+              </div>
+              <div class="bar-label">
+                <span>Structure</span><div class="bar-track"><div class="bar-fill green" :style="{ width: pillarCompliance.structurePct + '%' }"></div></div><strong>{{ pillarCompliance.structurePct }}%</strong>
               </div>
             </div>
-          </article>
-
-          <article class="panel chart">
-            <div class="section-head"><h2>Distribution RR</h2></div>
-            <div class="bars">
-              <div v-for="item in rrStats" :key="item.label" class="bar-label">
-                <span>{{ item.label }}</span><div class="bar-track"><div class="bar-fill violet" :style="{ width: item.pct + '%' }"></div></div><strong>{{ item.value }}</strong>
-              </div>
-            </div>
+            <div v-else class="empty">Aucun trade pour le moment</div>
           </article>
         </section>
       </div>
