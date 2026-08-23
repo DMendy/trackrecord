@@ -457,7 +457,7 @@ createApp({
           </div>
         </div>
         <div class="top-actions">
-          <span class="status-pill"><span class="live-dot"></span>Live</span>
+          <span class="status-pill"><span class="live-dot"></span><span class="status-label">Live</span></span>
           <button class="btn ghost" @click="load">Refresh</button>
           <button class="btn primary" @click="openNew">+ Trade</button>
         </div>
@@ -488,10 +488,6 @@ createApp({
           <div class="metric tone-teal">
             <span class="metric-icon">$</span>
             <div class="metric-body"><p class="label">Balance PF</p><div class="value">{{ money(propFirm.current_balance) }}</div></div>
-            <svg v-if="equitySeries.length > 1" class="metric-spark" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <path :d="equityAreaPath" class="equity-area" />
-              <path :d="equityPath" class="equity-line" :class="{ good: equityTotal >= 0, bad: equityTotal < 0 }" />
-            </svg>
           </div>
         </section>
 
