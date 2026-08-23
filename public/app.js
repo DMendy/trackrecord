@@ -465,19 +465,19 @@ createApp({
 
       <div class="layout">
         <section class="stats">
-          <div class="metric tone-blue">
+          <div class="metric tone-teal-deep">
             <span class="metric-icon">#</span>
             <div class="metric-body"><p class="label">Trades</p><div class="value">{{ stats.total || 0 }}</div></div>
           </div>
-          <div class="metric tone-amber">
+          <div class="metric tone-teal-mid">
             <span class="metric-icon">○</span>
             <div class="metric-body"><p class="label">Ouverts</p><div class="value">{{ stats.open || 0 }}</div></div>
           </div>
-          <div class="metric tone-green">
+          <div class="metric tone-teal-light">
             <span class="metric-icon">%</span>
             <div class="metric-body"><p class="label">Win rate</p><div class="value good">{{ stats.win_rate ?? 0 }}%</div></div>
           </div>
-          <div class="metric tone-violet">
+          <div class="metric tone-teal-deep">
             <span class="metric-icon">R</span>
             <div class="metric-body"><p class="label">Avg RR</p><div class="value">{{ stats.avg_rr ?? 0 }}R</div></div>
           </div>
@@ -526,8 +526,8 @@ createApp({
             </div>
           </div>
           <div class="calendar-footer">
-            <div class="calendar-stat tone-blue"><span class="label">Trades ce mois</span><strong>{{ monthStats.trades }}</strong></div>
-            <div class="calendar-stat tone-violet"><span class="label">Win rate</span><strong>{{ monthStats.winRate }}%</strong></div>
+            <div class="calendar-stat tone-teal-mid"><span class="label">Trades ce mois</span><strong>{{ monthStats.trades }}</strong></div>
+            <div class="calendar-stat tone-teal-deep"><span class="label">Win rate</span><strong>{{ monthStats.winRate }}%</strong></div>
             <div class="calendar-stat tone-pnl" :class="{ good: monthStats.pnl >= 0, bad: monthStats.pnl < 0 }"><span class="label">PnL du mois</span><strong :class="{ good: monthStats.pnl >= 0, bad: monthStats.pnl < 0 }">{{ money(monthStats.pnl) }}</strong></div>
           </div>
         </section>
