@@ -1,7 +1,7 @@
 import { createApp } from '/vendor/vue/vue.esm-browser.prod.js'
 import * as THREE from '/vendor/three/three.module.js'
 
-const DEFAULT_API_URL = 'https://vibrant-quietude-production-374a.up.railway.app'
+const DEFAULT_API_URL = 'https://trackrecord-kbo7.onrender.com'
 const API = window.TRACK_RECORD_API_URL
   ?? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '' : DEFAULT_API_URL)
 

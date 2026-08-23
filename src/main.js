@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import * as THREE from 'three'
 
-const DEFAULT_API_URL = 'https://vibrant-quietude-production-374a.up.railway.app'
+const DEFAULT_API_URL = 'https://trackrecord-kbo7.onrender.com'
 const API = import.meta.env.VITE_API_URL
   ?? (window.TRACK_RECORD_API_URL
     ?? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '' : DEFAULT_API_URL))
