@@ -9,11 +9,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.DATA_PATH ?? __dirname
 const DB_PATH = path.join(DATA_DIR, 'trades.json')
 const PROP_FIRM_PATH = path.join(DATA_DIR, 'prop_firm.json')
+const SCANNER_ALERTS_PATH = path.join(DATA_DIR, 'scanner_alerts.json')
 const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads')
 const PORT = process.env.PORT ?? 3001
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
 if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, '[]')
+if (!fs.existsSync(SCANNER_ALERTS_PATH)) fs.writeFileSync(SCANNER_ALERTS_PATH, '[]')
 
 const app = express()
 app.use(cors())
@@ -57,6 +59,14 @@ function readPropFirm() {
 
 function writePropFirm(config) {
   fs.writeFileSync(PROP_FIRM_PATH, JSON.stringify(config, null, 2))
+}
+
+function readScannerAlerts() {
+  return JSON.parse(fs.readFileSync(SCANNER_ALERTS_PATH, 'utf8'))
+}
+
+function writeScannerAlerts(alerts) {
+  fs.writeFileSync(SCANNER_ALERTS_PATH, JSON.stringify(alerts, null, 2))
 }
 
 function broadcast(event, data) {
@@ -245,6 +255,61 @@ app.put('/api/prop-firm', (req, res) => {
   writePropFirm(next)
   broadcast('prop_firm_updated', next)
   res.json(next)
+})
+
+// Webhook receiver for harmonicpattern.com (or any scanner) pattern alerts.
+// Payload shape is not assumed — whatever JSON the scanner sends is stored as-is
+// under `payload`, so Claude can interpret it when reviewing on demand.
+app.post('/api/scanner-alerts', (req, res) => {
+  const alert = {
+    id: randomUUID(),
+    received_at: new Date().toISOString(),
+    status: 'pending', // 'pending' | 'reviewed'
+    reviewed_at: null,
+    verdict: null, // e.g. 'valid_setup' | 'rejected'
+    note: null,
+    payload: req.body,
+  }
+
+  const alerts = readScannerAlerts()
+  alerts.push(alert)
+  writeScannerAlerts(alerts)
+  broadcast('scanner_alert_received', alert)
+
+  res.status(201).json(alert)
+})
+
+// GET alerts, optionally filtered by status (?status=pending)
+app.get('/api/scanner-alerts', (req, res) => {
+  const alerts = readScannerAlerts()
+  const { status } = req.query
+  res.json(status ? alerts.filter(a => a.status === status) : alerts)
+})
+
+// Mark an alert as reviewed once Claude has analyzed it
+app.patch('/api/scanner-alerts/:id', (req, res) => {
+  const alerts = readScannerAlerts()
+  const idx = alerts.findIndex(a => a.id === req.params.id)
+  if (idx === -1) return res.status(404).json({ error: 'not found' })
+
+  const editableFields = ['status', 'verdict', 'note']
+  const updates = {}
+  editableFields.forEach(field => {
+    if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+      updates[field] = req.body[field]
+    }
+  })
+
+  alerts[idx] = {
+    ...alerts[idx],
+    ...updates,
+    reviewed_at: updates.status === 'reviewed' ? (alerts[idx].reviewed_at ?? new Date().toISOString()) : alerts[idx].reviewed_at,
+  }
+
+  writeScannerAlerts(alerts)
+  broadcast('scanner_alert_updated', alerts[idx])
+
+  res.json(alerts[idx])
 })
 
 // stats endpoint (bonus)
