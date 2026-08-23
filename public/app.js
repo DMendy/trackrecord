@@ -56,6 +56,7 @@ createApp({
       editingId: null,
       form: blankTrade(),
       saving: false,
+      calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     }
   },
 
@@ -85,11 +86,6 @@ createApp({
       return this.topBars(counts, 6)
     },
 
-    sessionStats() {
-      const counts = this.countBy('session')
-      return this.topBars(counts, 5)
-    },
-
     rrStats() {
       const buckets = { '<1R': 0, '1-2R': 0, '2-3R': 0, '3R+': 0 }
       this.trades.forEach(trade => {
@@ -103,9 +99,110 @@ createApp({
       return this.topBars(buckets, 4)
     },
 
-    longPct() {
-      const long = this.trades.filter(t => t.direction === 'LONG').length
-      return this.trades.length ? Math.round((long / this.trades.length) * 100) : 0
+    closedTradesByDate() {
+      return this.trades
+        .filter(trade => trade.status !== 'open')
+        .slice()
+        .sort((a, b) => new Date(a.closed_at || a.timestamp || 0) - new Date(b.closed_at || b.timestamp || 0))
+    },
+
+    equitySeries() {
+      let running = 0
+      return this.closedTradesByDate.map(trade => {
+        running += Number(trade.pnl_amount) || 0
+        return running
+      })
+    },
+
+    equityTotal() {
+      const series = this.equitySeries
+      return series.length ? series[series.length - 1] : 0
+    },
+
+    equityPath() {
+      const series = this.equitySeries
+      if (series.length < 2) return ''
+      const min = Math.min(0, ...series)
+      const max = Math.max(0, ...series)
+      const range = max - min || 1
+      const stepX = 100 / (series.length - 1)
+      return series
+        .map((value, i) => `${i === 0 ? 'M' : 'L'}${(i * stepX).toFixed(2)},${(100 - ((value - min) / range) * 100).toFixed(2)}`)
+        .join(' ')
+    },
+
+    equityAreaPath() {
+      if (!this.equityPath) return ''
+      return `${this.equityPath} L100,100 L0,100 Z`
+    },
+
+    equityZeroY() {
+      const series = this.equitySeries
+      if (series.length < 2) return null
+      const min = Math.min(0, ...series)
+      const max = Math.max(0, ...series)
+      const range = max - min || 1
+      if (min > 0 || max < 0) return null
+      return 100 - ((0 - min) / range) * 100
+    },
+
+    dailyPnl() {
+      const map = {}
+      this.trades.forEach(trade => {
+        if (trade.status === 'open') return
+        const dateKey = (trade.closed_at || trade.timestamp || '').slice(0, 10)
+        if (!dateKey) return
+        if (!map[dateKey]) map[dateKey] = { pnl: 0, trades: 0, wins: 0 }
+        map[dateKey].pnl += Number(trade.pnl_amount) || 0
+        map[dateKey].trades += 1
+        if (trade.status === 'win') map[dateKey].wins += 1
+      })
+      return map
+    },
+
+    calendarWeeks() {
+      const year = this.calendarMonth.getFullYear()
+      const month = this.calendarMonth.getMonth()
+      const firstDay = new Date(year, month, 1)
+      const startOffset = (firstDay.getDay() + 6) % 7
+      const daysInMonth = new Date(year, month + 1, 0).getDate()
+
+      const cells = []
+      for (let i = 0; i < startOffset; i += 1) cells.push(null)
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        const info = this.dailyPnl[dateKey]
+        cells.push({ day, pnl: info ? info.pnl : 0, trades: info ? info.trades : 0 })
+      }
+      while (cells.length % 7 !== 0) cells.push(null)
+
+      const weeks = []
+      for (let i = 0; i < cells.length; i += 7) {
+        const weekCells = cells.slice(i, i + 7)
+        const hasData = weekCells.some(cell => cell && cell.trades)
+        const total = weekCells.reduce((sum, cell) => sum + (cell ? cell.pnl : 0), 0)
+        weeks.push({ cells: weekCells, total, hasData })
+      }
+      return weeks
+    },
+
+    calendarLabel() {
+      return new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(this.calendarMonth)
+    },
+
+    monthStats() {
+      const year = this.calendarMonth.getFullYear()
+      const month = this.calendarMonth.getMonth()
+      const prefix = `${year}-${String(month + 1).padStart(2, '0')}`
+      const entries = Object.entries(this.dailyPnl).filter(([key]) => key.startsWith(prefix))
+      const trades = entries.reduce((sum, [, v]) => sum + v.trades, 0)
+      const wins = entries.reduce((sum, [, v]) => sum + v.wins, 0)
+      const pnl = entries.reduce((sum, [, v]) => sum + v.pnl, 0)
+      return {
+        trades,
+        winRate: trades ? Math.round((wins / trades) * 100) : 0,
+        pnl,
+      }
     },
 
     pfProgress() {
@@ -183,6 +280,10 @@ createApp({
         .sort((a, b) => b[1] - a[1])
         .slice(0, limit)
         .map(([label, value]) => ({ label, value, pct: Math.round((value / max) * 100) }))
+    },
+
+    shiftMonth(delta) {
+      this.calendarMonth = new Date(this.calendarMonth.getFullYear(), this.calendarMonth.getMonth() + delta, 1)
     },
 
     openNew() {
@@ -297,6 +398,7 @@ createApp({
           </div>
         </div>
         <div class="top-actions">
+          <span class="status-pill"><span class="live-dot"></span>Live</span>
           <button class="btn ghost" @click="load">Refresh</button>
           <button class="btn primary" @click="openNew">+ Trade</button>
         </div>
@@ -314,7 +416,7 @@ createApp({
 
         <section>
           <div class="section-head">
-            <h2>Chart Overview</h2>
+            <h2>Derniers trades</h2>
             <div class="filters">
               <input class="field" v-model="query" placeholder="Search pair, setup, session" />
               <select class="select" v-model="statusFilter">
@@ -355,7 +457,7 @@ createApp({
 
         <section class="panel">
           <div class="section-head">
-            <h2>List Overview</h2>
+            <h2>Historique complet</h2>
             <span class="label">{{ filteredTrades.length }} lignes</span>
           </div>
           <div class="table-wrap">
@@ -395,9 +497,59 @@ createApp({
           </div>
         </section>
 
+        <section class="panel">
+          <div class="section-head calendar-head">
+            <h2>Calendrier des trades</h2>
+            <div class="calendar-nav">
+              <button type="button" class="icon-btn" @click="shiftMonth(-1)">‹</button>
+              <span class="calendar-label">{{ calendarLabel }}</span>
+              <button type="button" class="icon-btn" @click="shiftMonth(1)">›</button>
+            </div>
+          </div>
+          <div class="calendar-scroll">
+            <div class="calendar-grid">
+              <div v-for="d in ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']" :key="d" class="calendar-weekday">{{ d }}</div>
+              <div class="calendar-weekday total">Total</div>
+              <template v-for="(week, wi) in calendarWeeks" :key="wi">
+                <div
+                  v-for="(cell, ci) in week.cells"
+                  :key="ci"
+                  class="calendar-cell"
+                  :class="cell ? (cell.trades ? (cell.pnl >= 0 ? 'win has-data' : 'loss has-data') : '') : 'empty'"
+                >
+                  <template v-if="cell">
+                    <span class="calendar-day">{{ cell.day }}</span>
+                    <span v-if="cell.trades" class="calendar-pnl">{{ money(cell.pnl) }}</span>
+                    <span v-if="cell.trades" class="calendar-trades">{{ cell.trades }} trade{{ cell.trades > 1 ? 's' : '' }}</span>
+                  </template>
+                </div>
+                <div class="calendar-total" :class="{ good: week.total > 0, bad: week.total < 0 }">{{ week.hasData ? money(week.total) : '—' }}</div>
+              </template>
+            </div>
+          </div>
+          <div class="calendar-footer">
+            <div class="calendar-stat"><span class="label">Trades ce mois</span><strong>{{ monthStats.trades }}</strong></div>
+            <div class="calendar-stat"><span class="label">Win rate</span><strong>{{ monthStats.winRate }}%</strong></div>
+            <div class="calendar-stat"><span class="label">PnL du mois</span><strong :class="{ good: monthStats.pnl >= 0, bad: monthStats.pnl < 0 }">{{ money(monthStats.pnl) }}</strong></div>
+          </div>
+        </section>
+
         <section class="analytics">
           <article class="panel chart">
-            <div class="section-head"><h2>Pairs Max Tradées</h2></div>
+            <div class="section-head">
+              <h2>Performance cumulée</h2>
+              <span class="equity-total" :class="{ good: equityTotal >= 0, bad: equityTotal < 0 }">{{ money(equityTotal) }}</span>
+            </div>
+            <svg v-if="equitySeries.length > 1" class="equity-chart" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <line v-if="equityZeroY !== null" x1="0" :y1="equityZeroY" x2="100" :y2="equityZeroY" class="equity-zero" />
+              <path :d="equityAreaPath" class="equity-area" />
+              <path :d="equityPath" class="equity-line" :class="{ good: equityTotal >= 0, bad: equityTotal < 0 }" />
+            </svg>
+            <div v-else class="empty">Pas assez de trades clôturés</div>
+          </article>
+
+          <article class="panel chart">
+            <div class="section-head"><h2>Paires les plus tradées</h2></div>
             <div class="bars">
               <div v-for="item in pairStats" :key="item.label" class="bar-label">
                 <span>{{ item.label }}</span><div class="bar-track"><div class="bar-fill" :style="{ width: item.pct + '%' }"></div></div><strong>{{ item.value }}</strong>
@@ -406,21 +558,10 @@ createApp({
           </article>
 
           <article class="panel chart">
-            <div class="section-head"><h2>Achat / Vente</h2></div>
-            <div class="donut" :style="{ '--pct': longPct }">
-              <div class="donut-inner"><div><strong>{{ longPct }}%</strong><span class="label">LONG</span></div></div>
-            </div>
-            <div class="row-between"><span class="badge long">Long {{ stats.long_count || 0 }}</span><span class="badge short">Short {{ stats.short_count || 0 }}</span></div>
-          </article>
-
-          <article class="panel chart">
-            <div class="section-head"><h2>RR + Sessions</h2></div>
+            <div class="section-head"><h2>Distribution RR</h2></div>
             <div class="bars">
               <div v-for="item in rrStats" :key="item.label" class="bar-label">
-                <span>{{ item.label }}</span><div class="bar-track"><div class="bar-fill green" :style="{ width: item.pct + '%' }"></div></div><strong>{{ item.value }}</strong>
-              </div>
-              <div v-for="item in sessionStats" :key="item.label" class="bar-label">
-                <span>{{ item.label }}</span><div class="bar-track"><div class="bar-fill red" :style="{ width: item.pct + '%' }"></div></div><strong>{{ item.value }}</strong>
+                <span>{{ item.label }}</span><div class="bar-track"><div class="bar-fill" :style="{ width: item.pct + '%' }"></div></div><strong>{{ item.value }}</strong>
               </div>
             </div>
           </article>
@@ -453,32 +594,53 @@ createApp({
             <h2>{{ editingId ? 'Modifier Trade' : 'Nouveau Trade' }}</h2>
             <button type="button" class="icon-btn" @click="editorOpen = false">×</button>
           </div>
-          <div class="form-grid">
-            <label><span class="label">Pair</span><input class="field" v-model="form.symbol" required /></label>
-            <label><span class="label">Status</span><select class="select" v-model="form.status"><option>open</option><option>win</option><option>loss</option><option>breakeven</option></select></label>
-            <label><span class="label">Direction</span><select class="select" v-model="form.direction"><option>LONG</option><option>SHORT</option></select></label>
-            <label><span class="label">Timeframe</span><input class="field" v-model="form.timeframe" /></label>
-            <label><span class="label">Strategy</span><input class="field" v-model="form.strategy" /></label>
-            <label><span class="label">Session</span><select class="select" v-model="form.session"><option>Asia</option><option>London</option><option>New York</option><option>Other</option></select></label>
-            <label><span class="label">Entry</span><input class="field" type="number" step="any" v-model="form.entry" /></label>
-            <label><span class="label">SL</span><input class="field" type="number" step="any" v-model="form.sl" /></label>
-            <label><span class="label">TP1</span><input class="field" type="number" step="any" v-model="form.tp1" /></label>
-            <label><span class="label">TP2</span><input class="field" type="number" step="any" v-model="form.tp2" /></label>
-            <label><span class="label">RR</span><input class="field" type="number" step="any" v-model="form.rr" /></label>
-            <label><span class="label">Note /10</span><input class="field" type="number" step="any" v-model="form.note" /></label>
-            <label><span class="label">PnL %</span><input class="field" type="number" step="any" v-model="form.pnl_pct" /></label>
-            <label><span class="label">PnL $</span><input class="field" type="number" step="any" v-model="form.pnl_amount" /></label>
-            <label><span class="label">Risk %</span><input class="field" type="number" step="any" v-model="form.risk_pct" /></label>
-            <label><span class="label">Position size</span><input class="field" type="number" step="any" v-model="form.position_size" /></label>
-            <label><span class="label">Prix</span><input class="field" v-model="form.pillars.prix" /></label>
-            <label><span class="label">Momentum</span><input class="field" v-model="form.pillars.momentum" /></label>
-            <label><span class="label">Structure</span><input class="field" v-model="form.pillars.structure" /></label>
-            <label><span class="label">Prop firm</span><select class="select" v-model="form.prop_firm"><option :value="true">Oui</option><option :value="false">Non</option></select></label>
-            <label class="wide"><span class="label">Image URL</span><input class="field" v-model="form.image_url" /></label>
-            <label class="wide"><span class="label">Upload chart</span><input class="field" type="file" accept="image/*" @change="uploadImage" /></label>
-            <div v-if="form.image_url" class="preview wide"><img :src="assetUrl(form.image_url)" /></div>
-            <label class="wide"><span class="label">Setup</span><textarea class="textarea" v-model="form.setup"></textarea></label>
-            <label class="wide"><span class="label">Comment</span><textarea class="textarea" v-model="form.comment"></textarea></label>
+          <div class="form-section">
+            <p class="form-section-title">Trade</p>
+            <div class="form-grid">
+              <label><span class="label">Pair</span><input class="field" v-model="form.symbol" required /></label>
+              <label><span class="label">Status</span><select class="select" v-model="form.status"><option>open</option><option>win</option><option>loss</option><option>breakeven</option></select></label>
+              <label><span class="label">Direction</span><select class="select" v-model="form.direction"><option>LONG</option><option>SHORT</option></select></label>
+              <label><span class="label">Timeframe</span><input class="field" v-model="form.timeframe" /></label>
+              <label><span class="label">Strategy</span><input class="field" v-model="form.strategy" /></label>
+              <label><span class="label">Session</span><select class="select" v-model="form.session"><option>Asia</option><option>London</option><option>New York</option><option>Other</option></select></label>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <p class="form-section-title">Niveaux &amp; risque</p>
+            <div class="form-grid">
+              <label><span class="label">Entry</span><input class="field" type="number" step="any" v-model="form.entry" /></label>
+              <label><span class="label">SL</span><input class="field" type="number" step="any" v-model="form.sl" /></label>
+              <label><span class="label">TP1</span><input class="field" type="number" step="any" v-model="form.tp1" /></label>
+              <label><span class="label">TP2</span><input class="field" type="number" step="any" v-model="form.tp2" /></label>
+              <label><span class="label">RR</span><input class="field" type="number" step="any" v-model="form.rr" /></label>
+              <label><span class="label">Note /10</span><input class="field" type="number" step="any" v-model="form.note" /></label>
+              <label><span class="label">PnL %</span><input class="field" type="number" step="any" v-model="form.pnl_pct" /></label>
+              <label><span class="label">PnL $</span><input class="field" type="number" step="any" v-model="form.pnl_amount" /></label>
+              <label><span class="label">Risk %</span><input class="field" type="number" step="any" v-model="form.risk_pct" /></label>
+              <label><span class="label">Position size</span><input class="field" type="number" step="any" v-model="form.position_size" /></label>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <p class="form-section-title">Piliers ATM</p>
+            <div class="form-grid">
+              <label><span class="label">Prix</span><input class="field" v-model="form.pillars.prix" /></label>
+              <label><span class="label">Momentum</span><input class="field" v-model="form.pillars.momentum" /></label>
+              <label><span class="label">Structure</span><input class="field" v-model="form.pillars.structure" /></label>
+              <label><span class="label">Prop firm</span><select class="select" v-model="form.prop_firm"><option :value="true">Oui</option><option :value="false">Non</option></select></label>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <p class="form-section-title">Chart &amp; notes</p>
+            <div class="form-grid">
+              <label class="wide"><span class="label">Image URL</span><input class="field" v-model="form.image_url" /></label>
+              <label class="wide"><span class="label">Upload chart</span><input class="field" type="file" accept="image/*" @change="uploadImage" /></label>
+              <div v-if="form.image_url" class="preview wide"><img :src="assetUrl(form.image_url)" /></div>
+              <label class="wide"><span class="label">Setup</span><textarea class="textarea" v-model="form.setup"></textarea></label>
+              <label class="wide"><span class="label">Comment</span><textarea class="textarea" v-model="form.comment"></textarea></label>
+            </div>
           </div>
           <div class="top-actions" style="margin-top: 16px;">
             <button class="btn primary" type="submit">{{ saving ? 'Saving...' : 'Save trade' }}</button>
