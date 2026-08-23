@@ -50,9 +50,6 @@ createApp({
       trades: [],
       stats: {},
       propFirm: {},
-      query: '',
-      statusFilter: 'all',
-      directionFilter: 'all',
       editorOpen: false,
       editingId: null,
       form: blankTrade(),
@@ -63,26 +60,6 @@ createApp({
   },
 
   computed: {
-    filteredTrades() {
-      const q = this.query.trim().toLowerCase()
-      return this.trades
-        .filter(trade => this.statusFilter === 'all' || trade.status === this.statusFilter)
-        .filter(trade => this.directionFilter === 'all' || trade.direction === this.directionFilter)
-        .filter(trade => {
-          if (!q) return true
-          return [trade.symbol, trade.strategy, trade.session, trade.comment, trade.setup]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase()
-            .includes(q)
-        })
-        .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
-    },
-
-    galleryTrades() {
-      return this.filteredTrades.slice(0, 8)
-    },
-
     pairStats() {
       const counts = this.countBy('symbol')
       return this.topBars(counts, 6)
@@ -206,20 +183,6 @@ createApp({
         pnl,
       }
     },
-
-    pfProgress() {
-      const start = Number(this.propFirm.starting_balance) || 100000
-      const current = Number(this.propFirm.current_balance) || start
-      const target = Number(this.propFirm.profit_target) || 1
-      const maxDd = Number(this.propFirm.max_total_drawdown) || 1
-      const profit = current - start
-      const drawdown = Math.max(0, start - current)
-      return {
-        profit,
-        targetPct: Math.min(100, Math.max(0, (profit / target) * 100)),
-        drawdownPct: Math.min(100, Math.max(0, (drawdown / maxDd) * 100)),
-      }
-    },
   },
 
   mounted() {
@@ -308,19 +271,6 @@ createApp({
       this.editorOpen = true
     },
 
-    editTrade(trade) {
-      this.editingId = trade.id
-      this.form = {
-        ...blankTrade(),
-        ...JSON.parse(JSON.stringify(trade)),
-        pillars: {
-          ...blankTrade().pillars,
-          ...(trade.pillars || {}),
-        },
-      }
-      this.editorOpen = true
-    },
-
     async saveTrade() {
       this.saving = true
       const payload = {
@@ -351,21 +301,6 @@ createApp({
         await this.load()
       }
       this.saving = false
-    },
-
-    async deleteTrade(trade) {
-      await fetch(apiUrl(`/api/trades/${trade.id}`), { method: 'DELETE' })
-      await this.load()
-    },
-
-    async savePropFirm() {
-      const response = await fetch(apiUrl('/api/prop-firm'), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(this.propFirm),
-      })
-      this.propFirm = await response.json()
-      await this.refreshStats()
     },
 
     async uploadImage(event) {
@@ -452,89 +387,6 @@ createApp({
           </div>
         </section>
 
-        <section>
-          <div class="section-head">
-            <h2>Derniers trades</h2>
-            <div class="filters">
-              <input class="field" v-model="query" placeholder="Search pair, setup, session" />
-              <select class="select" v-model="statusFilter">
-                <option value="all">All status</option>
-                <option value="open">Open</option>
-                <option value="win">Win</option>
-                <option value="loss">Loss</option>
-                <option value="breakeven">BE</option>
-              </select>
-              <select class="select" v-model="directionFilter">
-                <option value="all">Long + Short</option>
-                <option value="LONG">Long</option>
-                <option value="SHORT">Short</option>
-              </select>
-            </div>
-          </div>
-          <div v-if="galleryTrades.length" class="gallery">
-            <article v-for="trade in galleryTrades" :key="trade.id" class="trade-card" @click="editTrade(trade)">
-              <div class="shot">
-                <img v-if="trade.image_url" :src="assetUrl(trade.image_url)" :alt="trade.symbol" />
-                <span v-else>No chart</span>
-              </div>
-              <div class="card-body">
-                <div class="card-line">
-                  <span class="pair">{{ trade.symbol || 'UNKNOWN' }}</span>
-                  <span class="badge" :class="trade.direction?.toLowerCase()">{{ trade.direction }}</span>
-                </div>
-                <div class="row-between" style="margin-top: 10px;">
-                  <span class="badge">{{ trade.strategy || 'ATM' }}</span>
-                  <span class="label">{{ formatDate(trade.timestamp) }}</span>
-                  <span class="badge">{{ trade.rr ?? '-' }}R</span>
-                </div>
-              </div>
-            </article>
-          </div>
-          <div v-else class="empty">Aucun trade pour le moment</div>
-        </section>
-
-        <section class="panel">
-          <div class="section-head">
-            <h2>Historique complet</h2>
-            <span class="label">{{ filteredTrades.length }} lignes</span>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Pair</th><th>Outcome</th><th>Date</th><th>Position</th><th>TF</th><th>Strategy</th><th>Session</th>
-                  <th>Entry</th><th>SL</th><th>TP1</th><th>TP2</th><th>RR</th><th>Note</th><th>PnL %</th><th>PnL $</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="trade in filteredTrades" :key="trade.id">
-                  <td><strong>{{ trade.symbol }}</strong></td>
-                  <td><span class="badge" :class="trade.status">{{ trade.status }}</span></td>
-                  <td>{{ formatDate(trade.timestamp) }}</td>
-                  <td><span class="badge" :class="trade.direction?.toLowerCase()">{{ trade.direction }}</span></td>
-                  <td>{{ trade.timeframe }}</td>
-                  <td>{{ trade.strategy || 'ATM' }}</td>
-                  <td>{{ trade.session || '-' }}</td>
-                  <td>{{ trade.entry ?? '-' }}</td>
-                  <td>{{ trade.sl ?? '-' }}</td>
-                  <td>{{ trade.tp1 ?? '-' }}</td>
-                  <td>{{ trade.tp2 ?? '-' }}</td>
-                  <td>{{ trade.rr ?? '-' }}</td>
-                  <td>{{ trade.note ?? '-' }}</td>
-                  <td>{{ trade.pnl_pct ?? '-' }}</td>
-                  <td>{{ trade.pnl_amount ?? '-' }}</td>
-                  <td>
-                    <div class="actions">
-                      <button class="icon-btn" title="Modifier" @click="editTrade(trade)">✎</button>
-                      <button class="icon-btn" title="Supprimer" @click="deleteTrade(trade)">×</button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
         <section class="panel">
           <div class="section-head calendar-head">
             <h2>Calendrier des trades</h2>
@@ -603,25 +455,6 @@ createApp({
               </div>
             </div>
           </article>
-        </section>
-
-        <section class="panel">
-          <div class="section-head">
-            <h2>Prop Firm 100K</h2>
-            <button class="btn" @click="savePropFirm">Save PF</button>
-          </div>
-          <div class="pf-grid">
-            <label><span class="label">Provider</span><input class="field" v-model="propFirm.provider" /></label>
-            <label><span class="label">Phase</span><input class="field" v-model="propFirm.phase" /></label>
-            <label><span class="label">Starting balance</span><input class="field" type="number" v-model="propFirm.starting_balance" /></label>
-            <label><span class="label">Current balance</span><input class="field" type="number" v-model="propFirm.current_balance" /></label>
-            <label><span class="label">Profit target</span><input class="field" type="number" v-model="propFirm.profit_target" /></label>
-            <label><span class="label">Max total DD</span><input class="field" type="number" v-model="propFirm.max_total_drawdown" /></label>
-          </div>
-          <div style="display: grid; gap: 10px; margin-top: 14px;">
-            <div><div class="row-between"><span class="label">Target</span><strong>{{ Math.round(pfProgress.targetPct) }}%</strong></div><div class="progress"><span :style="{ width: pfProgress.targetPct + '%' }"></span></div></div>
-            <div><div class="row-between"><span class="label">Drawdown utilisé</span><strong>{{ Math.round(pfProgress.drawdownPct) }}%</strong></div><div class="progress risk"><span :style="{ width: pfProgress.drawdownPct + '%' }"></span></div></div>
-          </div>
         </section>
       </div>
 

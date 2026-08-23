@@ -397,14 +397,6 @@ h1 {
 .value.good { color: var(--green); }
 .value.bad { color: var(--red); }
 
-/* ---------- Filters ---------- */
-
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .field,
 .select,
 .textarea {
@@ -442,112 +434,6 @@ h1 {
   line-height: 1.45;
 }
 
-/* ---------- Gallery ---------- */
-
-.gallery {
-  display: grid;
-  grid-auto-columns: minmax(240px, 320px);
-  grid-auto-flow: column;
-  gap: 14px;
-  overflow-x: auto;
-  padding: 2px 2px 10px;
-}
-
-.trade-card {
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-  cursor: pointer;
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-}
-
-.trade-card:hover {
-  border-color: rgba(255, 255, 255, 0.22);
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-3px);
-}
-
-.shot {
-  position: relative;
-  display: grid;
-  height: 168px;
-  place-items: center;
-  border-bottom: 1px solid var(--line-soft);
-  background: #08090c;
-  color: var(--muted);
-  font-size: 12.5px;
-}
-
-.shot img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.card-body {
-  padding: 14px;
-}
-
-.card-line,
-.row-between {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.pair {
-  font-size: 15px;
-  font-weight: 750;
-  letter-spacing: -0.005em;
-}
-
-/* ---------- Badges ---------- */
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--panel-3);
-  color: var(--muted-2);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.badge.long,
-.badge.win {
-  border-color: transparent;
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.badge.short,
-.badge.loss {
-  border-color: transparent;
-  background: var(--red-soft);
-  color: var(--red);
-}
-
-.badge.open {
-  border-color: transparent;
-  background: var(--blue-soft);
-  color: var(--blue);
-}
-
-.badge.breakeven {
-  border-color: transparent;
-  background: var(--amber-soft);
-  color: var(--amber);
-}
-
 /* ---------- Panels ---------- */
 
 .panel {
@@ -562,100 +448,6 @@ h1 {
 .panel:hover {
   border-color: rgba(79, 216, 160, 0.16);
   box-shadow: var(--shadow), 0 0 28px rgba(79, 216, 160, 0.05);
-}
-
-/* ---------- Table ---------- */
-
-.table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-}
-
-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  min-width: 1180px;
-}
-
-th,
-td {
-  border-bottom: 1px solid var(--line-soft);
-  padding: 12px 12px;
-  text-align: left;
-  font-size: 12.5px;
-  white-space: nowrap;
-}
-
-th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  color: var(--muted);
-  background: var(--panel-2);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-
-td {
-  color: var(--muted-2);
-  font-variant-numeric: tabular-nums;
-}
-
-td strong {
-  color: var(--text);
-}
-
-tbody tr:nth-child(even) td {
-  background: rgba(255, 255, 255, 0.012);
-}
-
-tbody tr:hover td {
-  background: rgba(255, 255, 255, 0.035);
-}
-
-/* numeric columns: Entry, SL, TP1, TP2, RR, Note, PnL%, PnL$ */
-th:nth-child(n + 8):nth-child(-n + 15),
-td:nth-child(n + 8):nth-child(-n + 15) {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-/* pair column stays readable while scrolling */
-th:first-child,
-td:first-child {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  background: var(--panel-2);
-}
-
-td:first-child {
-  background: var(--panel);
-}
-
-tbody tr:nth-child(even) td:first-child {
-  background: #101319;
-}
-
-tbody tr:hover td:first-child {
-  background: #14171d;
-}
-
-th:last-child,
-td:last-child {
-  text-align: right;
-  white-space: nowrap;
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
 }
 
 /* ---------- Analytics ---------- */
@@ -755,38 +547,6 @@ td:last-child {
   stroke-width: 1;
   stroke-dasharray: 3 3;
   vector-effect: non-scaling-stroke;
-}
-
-/* ---------- Prop firm ---------- */
-
-.pf-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.pf-grid label {
-  display: grid;
-  gap: 6px;
-}
-
-.progress {
-  height: 10px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--panel-3);
-}
-
-.progress span {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--green);
-  transition: width 220ms ease;
-}
-
-.progress.risk span {
-  background: var(--red);
 }
 
 /* ---------- Trade calendar ---------- */
@@ -1054,7 +814,6 @@ td:last-child {
 
   .stats,
   .analytics,
-  .pf-grid,
   .form-grid,
   .calendar-footer {
     grid-template-columns: 1fr;
