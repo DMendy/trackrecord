@@ -40,15 +40,15 @@ function readPropFirm() {
     return {
       provider: '5ers',
       account_size: 200000,
-      phase: 'Challenge',
+      phase: 'Step 1 (8/5 Plan)',
       starting_balance: 200000,
       current_balance: 200000,
       profit_target: 16000,
-      max_daily_drawdown: 10000,
+      max_daily_drawdown: 6000,
       max_total_drawdown: 20000,
       trades_taken: 0,
       max_trades: null,
-      notes: '',
+      notes: 'Summer Plan Classic 200K, 8/5 Plan (279$). Step 1 target 8%, Step 2 target 5%. Perte max journaliere 3% (EOD), perte max totale 10%.',
     }
   }
 
