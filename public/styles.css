@@ -17,6 +17,8 @@
   --blue-soft: rgba(111, 162, 255, 0.14);
   --amber: #f0bd5f;
   --amber-soft: rgba(240, 189, 95, 0.14);
+  --violet: #b18aff;
+  --violet-soft: rgba(177, 138, 255, 0.14);
   --radius: 12px;
   --radius-sm: 8px;
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
@@ -41,16 +43,29 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-body::before {
+body::before,
+body::after {
   content: "";
   position: fixed;
-  inset: -20% -10% auto -10%;
   z-index: 0;
+  width: 60vw;
   height: 60vh;
-  background: radial-gradient(closest-side, rgba(79, 216, 160, 0.09), transparent 70%);
-  filter: blur(60px);
+  filter: blur(70px);
   pointer-events: none;
+}
+
+body::before {
+  top: -18%;
+  left: -12%;
+  background: radial-gradient(closest-side, rgba(79, 216, 160, 0.13), transparent 70%);
   animation: drift 22s ease-in-out infinite alternate;
+}
+
+body::after {
+  top: 10%;
+  right: -18%;
+  background: radial-gradient(closest-side, rgba(111, 162, 255, 0.11), transparent 70%);
+  animation: drift 26s ease-in-out infinite alternate-reverse;
 }
 
 @keyframes drift {
@@ -121,13 +136,14 @@ h1, h2, h3, p {
   width: 36px;
   height: 36px;
   place-items: center;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-sm);
-  background: var(--panel-3);
-  color: var(--text);
+  background: linear-gradient(155deg, rgba(79, 216, 160, 0.9), rgba(111, 162, 255, 0.85));
+  color: #06120f;
   font-weight: 800;
   font-size: 13px;
   letter-spacing: 0.02em;
+  box-shadow: 0 0 18px rgba(79, 216, 160, 0.25);
 }
 
 h1 {
@@ -247,10 +263,10 @@ h1 {
 
 .layout {
   display: grid;
-  gap: 28px;
+  gap: 20px;
   width: min(1560px, 100%);
   margin: 0 auto;
-  padding: 24px 28px 56px;
+  padding: 20px 28px 48px;
 }
 
 .layout > section {
@@ -290,14 +306,17 @@ h1 {
 .metric {
   position: relative;
   overflow: hidden;
-  min-height: 96px;
-  padding: 16px 16px 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-height: 84px;
+  padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: linear-gradient(165deg, var(--panel-2), var(--panel));
+  background: var(--panel);
   box-shadow: var(--shadow);
   animation: rise 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  transition: border-color 200ms ease, box-shadow 200ms ease;
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
 }
 
 .stats .metric:nth-child(1) { animation-delay: 0ms; }
@@ -308,21 +327,68 @@ h1 {
 .stats .metric:nth-child(6) { animation-delay: 200ms; }
 
 .metric:hover {
-  border-color: rgba(79, 216, 160, 0.22);
-  box-shadow: var(--shadow), 0 0 28px rgba(79, 216, 160, 0.08);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.metric-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.metric-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.metric.tone-blue { background: linear-gradient(160deg, rgba(111, 162, 255, 0.12), var(--panel) 65%); border-color: rgba(111, 162, 255, 0.25); }
+.metric.tone-blue .metric-icon { background: rgba(111, 162, 255, 0.22); color: var(--blue); }
+
+.metric.tone-amber { background: linear-gradient(160deg, rgba(240, 189, 95, 0.12), var(--panel) 65%); border-color: rgba(240, 189, 95, 0.25); }
+.metric.tone-amber .metric-icon { background: rgba(240, 189, 95, 0.22); color: var(--amber); }
+
+.metric.tone-green { background: linear-gradient(160deg, rgba(79, 216, 160, 0.12), var(--panel) 65%); border-color: rgba(79, 216, 160, 0.25); }
+.metric.tone-green .metric-icon { background: rgba(79, 216, 160, 0.22); color: var(--green); }
+
+.metric.tone-violet { background: linear-gradient(160deg, rgba(177, 138, 255, 0.12), var(--panel) 65%); border-color: rgba(177, 138, 255, 0.25); }
+.metric.tone-violet .metric-icon { background: rgba(177, 138, 255, 0.22); color: var(--violet); }
+
+.metric.tone-pnl.good { background: linear-gradient(160deg, rgba(79, 216, 160, 0.12), var(--panel) 65%); border-color: rgba(79, 216, 160, 0.25); }
+.metric.tone-pnl.good .metric-icon { background: rgba(79, 216, 160, 0.22); color: var(--green); }
+.metric.tone-pnl.bad { background: linear-gradient(160deg, rgba(255, 107, 102, 0.12), var(--panel) 65%); border-color: rgba(255, 107, 102, 0.25); }
+.metric.tone-pnl.bad .metric-icon { background: rgba(255, 107, 102, 0.22); color: var(--red); }
+
+.metric.tone-teal { background: linear-gradient(160deg, rgba(79, 216, 160, 0.1), rgba(111, 162, 255, 0.08) 60%, var(--panel) 90%); border-color: rgba(111, 162, 255, 0.22); }
+.metric.tone-teal .metric-icon { background: linear-gradient(155deg, rgba(79, 216, 160, 0.28), rgba(111, 162, 255, 0.28)); color: var(--text); }
+
+.metric-spark {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 96px;
+  height: 48px;
+  opacity: 0.9;
+  pointer-events: none;
 }
 
 .label {
-  color: var(--muted);
-  font-size: 11.5px;
+  display: block;
+  color: var(--muted-2);
+  font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
 .value {
-  margin-top: 12px;
-  font-size: 26px;
+  margin-top: 4px;
+  font-size: 23px;
   font-weight: 750;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
@@ -639,6 +705,9 @@ td:last-child {
   transition: width 220ms ease;
 }
 
+.bar-fill.blue { background: var(--blue); box-shadow: 0 0 10px rgba(111, 162, 255, 0.35); }
+.bar-fill.violet { background: var(--violet); box-shadow: 0 0 10px rgba(177, 138, 255, 0.35); }
+
 .equity-total {
   font-size: 15px;
   font-weight: 750;
@@ -789,13 +858,13 @@ td:last-child {
 }
 
 .calendar-cell.win {
-  border-color: rgba(79, 216, 160, 0.3);
-  background: rgba(79, 216, 160, 0.09);
+  border-color: rgba(79, 216, 160, 0.45);
+  background: rgba(79, 216, 160, 0.16);
 }
 
 .calendar-cell.loss {
-  border-color: rgba(255, 107, 102, 0.3);
-  background: rgba(255, 107, 102, 0.09);
+  border-color: rgba(255, 107, 102, 0.45);
+  background: rgba(255, 107, 102, 0.16);
 }
 
 .calendar-cell.has-data:hover {
@@ -853,6 +922,11 @@ td:last-child {
   border-radius: var(--radius-sm);
   background: var(--panel-2);
 }
+
+.calendar-stat.tone-blue { background: linear-gradient(160deg, rgba(111, 162, 255, 0.14), var(--panel-2) 70%); border-color: rgba(111, 162, 255, 0.28); }
+.calendar-stat.tone-violet { background: linear-gradient(160deg, rgba(177, 138, 255, 0.14), var(--panel-2) 70%); border-color: rgba(177, 138, 255, 0.28); }
+.calendar-stat.tone-pnl.good { background: linear-gradient(160deg, rgba(79, 216, 160, 0.14), var(--panel-2) 70%); border-color: rgba(79, 216, 160, 0.28); }
+.calendar-stat.tone-pnl.bad { background: linear-gradient(160deg, rgba(255, 107, 102, 0.14), var(--panel-2) 70%); border-color: rgba(255, 107, 102, 0.28); }
 
 .calendar-stat strong {
   display: block;
@@ -927,13 +1001,13 @@ td:last-child {
 
 .empty {
   display: grid;
-  min-height: 110px;
+  min-height: 90px;
   place-items: center;
   border: 1px dashed var(--line);
   border-radius: var(--radius);
   color: var(--muted);
   font-size: 13px;
-  background: rgba(255, 255, 255, 0.012);
+  background: rgba(255, 255, 255, 0.018);
 }
 
 /* ---------- Scrollbars ---------- */

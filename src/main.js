@@ -58,6 +58,7 @@ createApp({
       form: blankTrade(),
       saving: false,
       calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      calendarAuto: true,
     }
   },
 
@@ -236,6 +237,7 @@ createApp({
       this.trades = trades
       this.stats = stats
       this.propFirm = propFirm
+      this.focusLatestTradeMonth()
     },
 
     connectStream() {
@@ -243,6 +245,7 @@ createApp({
       stream.addEventListener('init', event => {
         this.trades = JSON.parse(event.data)
         this.refreshStats()
+        this.focusLatestTradeMonth()
       })
       stream.addEventListener('trade_added', event => {
         this.trades = [JSON.parse(event.data), ...this.trades]
@@ -284,7 +287,19 @@ createApp({
     },
 
     shiftMonth(delta) {
+      this.calendarAuto = false
       this.calendarMonth = new Date(this.calendarMonth.getFullYear(), this.calendarMonth.getMonth() + delta, 1)
+    },
+
+    focusLatestTradeMonth() {
+      if (!this.calendarAuto || !this.trades.length) return
+      const latest = this.trades.reduce((max, trade) => {
+        const date = new Date(trade.closed_at || trade.timestamp || 0)
+        return date > max ? date : max
+      }, new Date(0))
+      if (latest.getTime() > 0) {
+        this.calendarMonth = new Date(latest.getFullYear(), latest.getMonth(), 1)
+      }
     },
 
     openNew() {
@@ -407,12 +422,34 @@ createApp({
 
       <div class="layout">
         <section class="stats">
-          <div class="metric"><p class="label">Trades</p><div class="value">{{ stats.total || 0 }}</div></div>
-          <div class="metric"><p class="label">Ouverts</p><div class="value">{{ stats.open || 0 }}</div></div>
-          <div class="metric"><p class="label">Win rate</p><div class="value good">{{ stats.win_rate ?? 0 }}%</div></div>
-          <div class="metric"><p class="label">Avg RR</p><div class="value">{{ stats.avg_rr ?? 0 }}R</div></div>
-          <div class="metric"><p class="label">PnL moyen</p><div class="value" :class="{ good: (stats.avg_pnl_pct || 0) >= 0, bad: (stats.avg_pnl_pct || 0) < 0 }">{{ stats.avg_pnl_pct ?? 0 }}%</div></div>
-          <div class="metric"><p class="label">Balance PF</p><div class="value">{{ money(propFirm.current_balance) }}</div></div>
+          <div class="metric tone-blue">
+            <span class="metric-icon">#</span>
+            <div class="metric-body"><p class="label">Trades</p><div class="value">{{ stats.total || 0 }}</div></div>
+          </div>
+          <div class="metric tone-amber">
+            <span class="metric-icon">○</span>
+            <div class="metric-body"><p class="label">Ouverts</p><div class="value">{{ stats.open || 0 }}</div></div>
+          </div>
+          <div class="metric tone-green">
+            <span class="metric-icon">%</span>
+            <div class="metric-body"><p class="label">Win rate</p><div class="value good">{{ stats.win_rate ?? 0 }}%</div></div>
+          </div>
+          <div class="metric tone-violet">
+            <span class="metric-icon">R</span>
+            <div class="metric-body"><p class="label">Avg RR</p><div class="value">{{ stats.avg_rr ?? 0 }}R</div></div>
+          </div>
+          <div class="metric tone-pnl" :class="{ good: (stats.avg_pnl_pct || 0) >= 0, bad: (stats.avg_pnl_pct || 0) < 0 }">
+            <span class="metric-icon">±</span>
+            <div class="metric-body"><p class="label">PnL moyen</p><div class="value" :class="{ good: (stats.avg_pnl_pct || 0) >= 0, bad: (stats.avg_pnl_pct || 0) < 0 }">{{ stats.avg_pnl_pct ?? 0 }}%</div></div>
+          </div>
+          <div class="metric tone-teal">
+            <span class="metric-icon">$</span>
+            <div class="metric-body"><p class="label">Balance PF</p><div class="value">{{ money(propFirm.current_balance) }}</div></div>
+            <svg v-if="equitySeries.length > 1" class="metric-spark" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <path :d="equityAreaPath" class="equity-area" />
+              <path :d="equityPath" class="equity-line" :class="{ good: equityTotal >= 0, bad: equityTotal < 0 }" />
+            </svg>
+          </div>
         </section>
 
         <section>
@@ -529,9 +566,9 @@ createApp({
             </div>
           </div>
           <div class="calendar-footer">
-            <div class="calendar-stat"><span class="label">Trades ce mois</span><strong>{{ monthStats.trades }}</strong></div>
-            <div class="calendar-stat"><span class="label">Win rate</span><strong>{{ monthStats.winRate }}%</strong></div>
-            <div class="calendar-stat"><span class="label">PnL du mois</span><strong :class="{ good: monthStats.pnl >= 0, bad: monthStats.pnl < 0 }">{{ money(monthStats.pnl) }}</strong></div>
+            <div class="calendar-stat tone-blue"><span class="label">Trades ce mois</span><strong>{{ monthStats.trades }}</strong></div>
+            <div class="calendar-stat tone-violet"><span class="label">Win rate</span><strong>{{ monthStats.winRate }}%</strong></div>
+            <div class="calendar-stat tone-pnl" :class="{ good: monthStats.pnl >= 0, bad: monthStats.pnl < 0 }"><span class="label">PnL du mois</span><strong :class="{ good: monthStats.pnl >= 0, bad: monthStats.pnl < 0 }">{{ money(monthStats.pnl) }}</strong></div>
           </div>
         </section>
 
@@ -553,7 +590,7 @@ createApp({
             <div class="section-head"><h2>Paires les plus tradées</h2></div>
             <div class="bars">
               <div v-for="item in pairStats" :key="item.label" class="bar-label">
-                <span>{{ item.label }}</span><div class="bar-track"><div class="bar-fill" :style="{ width: item.pct + '%' }"></div></div><strong>{{ item.value }}</strong>
+                <span>{{ item.label }}</span><div class="bar-track"><div class="bar-fill blue" :style="{ width: item.pct + '%' }"></div></div><strong>{{ item.value }}</strong>
               </div>
             </div>
           </article>
@@ -562,7 +599,7 @@ createApp({
             <div class="section-head"><h2>Distribution RR</h2></div>
             <div class="bars">
               <div v-for="item in rrStats" :key="item.label" class="bar-label">
-                <span>{{ item.label }}</span><div class="bar-track"><div class="bar-fill" :style="{ width: item.pct + '%' }"></div></div><strong>{{ item.value }}</strong>
+                <span>{{ item.label }}</span><div class="bar-track"><div class="bar-fill violet" :style="{ width: item.pct + '%' }"></div></div><strong>{{ item.value }}</strong>
               </div>
             </div>
           </article>
