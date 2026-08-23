@@ -30,43 +30,116 @@ function mountPlanet(container) {
 
   camera.position.set(0, 0, 10)
   scene.add(group)
-  scene.add(new THREE.AmbientLight(0xffffff, 1.45))
+  scene.add(new THREE.AmbientLight(0xffffff, 1.25))
 
-  const keyLight = new THREE.PointLight(0x3da5a5, 4.4, 12)
+  const keyLight = new THREE.PointLight(0x3da5a5, 5.4, 14)
   keyLight.position.set(2.4, 2.2, 4)
   scene.add(keyLight)
 
-  const rimLight = new THREE.PointLight(0xffffff, 1.8, 10)
+  const rimLight = new THREE.PointLight(0xa3d5d3, 2.2, 10)
   rimLight.position.set(-2.2, -1.2, 3.4)
   scene.add(rimLight)
 
+  // Champ d'étoiles en fond, léger effet de parallaxe
+  const starCount = 260
+  const starPositions = new Float32Array(starCount * 3)
+  for (let i = 0; i < starCount; i += 1) {
+    const radius = 4.6 + Math.random() * 4.2
+    const theta = Math.random() * Math.PI * 2
+    const phi = Math.acos(Math.random() * 2 - 1)
+    starPositions[i * 3] = radius * Math.sin(phi) * Math.cos(theta)
+    starPositions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta)
+    starPositions[i * 3 + 2] = radius * Math.cos(phi) - 3
+  }
+  const starGeometry = new THREE.BufferGeometry()
+  starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3))
+  const stars = new THREE.Points(
+    starGeometry,
+    new THREE.PointsMaterial({ color: 0xdfeeee, size: 0.028, sizeAttenuation: true, transparent: true, opacity: 0.75 }),
+  )
+  scene.add(stars)
+
   const planet = new THREE.Mesh(
     new THREE.SphereGeometry(1.5, 96, 96),
-    new THREE.MeshStandardMaterial({ color: 0x0f4c5c, roughness: 0.28, metalness: 0.22, emissive: 0x08252d, emissiveIntensity: 0.52 }),
+    new THREE.MeshStandardMaterial({ color: 0x0f4c5c, roughness: 0.26, metalness: 0.24, emissive: 0x0b2f39, emissiveIntensity: 0.62 }),
   )
   group.add(planet)
 
   const atmosphere = new THREE.Mesh(
-    new THREE.SphereGeometry(1.74, 96, 96),
-    new THREE.MeshBasicMaterial({ color: 0x3da5a5, transparent: true, opacity: 0.14, side: THREE.BackSide }),
+    new THREE.SphereGeometry(1.76, 96, 96),
+    new THREE.MeshBasicMaterial({
+      color: 0x3da5a5,
+      transparent: true,
+      opacity: 0.32,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
   )
   group.add(atmosphere)
 
+  const outerGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(2.05, 64, 64),
+    new THREE.MeshBasicMaterial({
+      color: 0x3da5a5,
+      transparent: true,
+      opacity: 0.1,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  )
+  group.add(outerGlow)
+
   const halo = new THREE.Mesh(
-    new THREE.TorusGeometry(1.96, 0.042, 32, 220),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.78 }),
+    new THREE.TorusGeometry(1.96, 0.03, 32, 220),
+    new THREE.MeshBasicMaterial({
+      color: 0xeaf6f5,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
   )
   halo.rotation.x = Math.PI / 2.42
   halo.rotation.z = -0.25
   group.add(halo)
 
+  const orbitTilt = new THREE.Object3D()
+  orbitTilt.rotation.x = Math.PI / 2.5
+  orbitTilt.rotation.z = 0.32
+  group.add(orbitTilt)
+
+  const orbitRadius = 2.36
   const orbit = new THREE.Mesh(
-    new THREE.TorusGeometry(2.36, 0.016, 24, 240),
-    new THREE.MeshBasicMaterial({ color: 0x3da5a5, transparent: true, opacity: 0.46 }),
+    new THREE.TorusGeometry(orbitRadius, 0.012, 24, 240),
+    new THREE.MeshBasicMaterial({
+      color: 0x3da5a5,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
   )
-  orbit.rotation.x = Math.PI / 2.5
-  orbit.rotation.z = 0.32
-  group.add(orbit)
+  orbitTilt.add(orbit)
+
+  const satellite = new THREE.Mesh(
+    new THREE.SphereGeometry(0.05, 24, 24),
+    new THREE.MeshBasicMaterial({ color: 0xeaf6f5 }),
+  )
+  orbitTilt.add(satellite)
+
+  const satelliteGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(0.13, 24, 24),
+    new THREE.MeshBasicMaterial({
+      color: 0xa3d5d3,
+      transparent: true,
+      opacity: 0.45,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  )
+  satellite.add(satelliteGlow)
 
   const resize = () => {
     const bounds = container.getBoundingClientRect()
@@ -99,7 +172,11 @@ function mountPlanet(container) {
     planet.rotation.y = time * 0.34
     atmosphere.rotation.y = time * 0.12
     halo.rotation.z = time * 0.22
-    orbit.rotation.z = time * 0.12
+    orbitTilt.rotation.y = time * 0.05
+    stars.rotation.y = time * 0.01
+
+    const satelliteAngle = time * 0.5
+    satellite.position.set(Math.cos(satelliteAngle) * orbitRadius, Math.sin(satelliteAngle) * orbitRadius, 0)
 
     renderer.render(scene, camera)
     frameId = window.requestAnimationFrame(animate)

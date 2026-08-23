@@ -61,17 +61,27 @@ body::before {
 .planet-bg {
   position: fixed;
   z-index: 0;
-  top: -120px;
-  left: -120px;
-  width: 560px;
-  height: 560px;
-  max-width: 60vw;
-  max-height: 60vw;
-  opacity: 0.55;
+  top: -140px;
+  left: -140px;
+  width: 640px;
+  height: 640px;
+  max-width: 66vw;
+  max-height: 66vw;
+  opacity: 0.85;
   pointer-events: none;
 }
 
+.planet-bg::before {
+  content: "";
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(61, 165, 165, 0.28), transparent 70%);
+  filter: blur(36px);
+}
+
 .planet-bg canvas {
+  position: relative;
   display: block;
   width: 100% !important;
   height: 100% !important;
@@ -79,9 +89,9 @@ body::before {
 
 @media (max-width: 760px) {
   .planet-bg {
-    opacity: 0.32;
-    width: 360px;
-    height: 360px;
+    opacity: 0.55;
+    width: 400px;
+    height: 400px;
   }
 }
 
