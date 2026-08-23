@@ -17,6 +17,8 @@
   --teal-light: #a3d5d3;
   --radius: 20px;
   --radius-sm: 10px;
+  --font-display: "Space Grotesk", Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.45);
 }
@@ -176,7 +178,8 @@ h1, h2, h3, p {
 }
 
 h1 {
-  font-size: 16px;
+  font-family: var(--font-display);
+  font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
@@ -319,9 +322,10 @@ h1 {
 }
 
 .section-head h2 {
+  font-family: var(--font-display);
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted-2);
 }
@@ -385,6 +389,7 @@ h1 {
   width: 24px;
   height: 24px;
   border-radius: 50%;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   font-weight: 800;
 }
@@ -424,8 +429,9 @@ h1 {
 
 .value {
   margin-top: 4px;
-  font-size: 23px;
-  font-weight: 750;
+  font-family: var(--font-mono);
+  font-size: 21px;
+  font-weight: 700;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
@@ -436,17 +442,55 @@ h1 {
 /* ---------- Panels ---------- */
 
 .panel {
+  position: relative;
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--panel);
+  background:
+    linear-gradient(115deg, transparent 40%, rgba(61, 165, 165, 0.1) 50%, transparent 60%),
+    var(--panel);
+  background-size: 250% 250%, 100% 100%;
+  background-position: -60% -60%, 0 0;
   box-shadow: var(--shadow);
-  transition: border-color 200ms ease, box-shadow 200ms ease;
+  transition: border-color 200ms ease, box-shadow 200ms ease, background-position 900ms ease;
+}
+
+.panel::before,
+.panel::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(61, 165, 165, 0.4);
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity 200ms ease, border-color 200ms ease;
+}
+
+.panel::before {
+  top: 9px;
+  left: 9px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.panel::after {
+  bottom: 9px;
+  right: 9px;
+  border-left: none;
+  border-top: none;
 }
 
 .panel:hover {
   border-color: rgba(61, 165, 165, 0.22);
   box-shadow: var(--shadow), 0 0 28px rgba(61, 165, 165, 0.07);
+  background-position: 160% 160%, 0 0;
+}
+
+.panel:hover::before,
+.panel:hover::after {
+  opacity: 1;
+  border-color: var(--teal-light);
 }
 
 /* ---------- Analytics ---------- */
@@ -479,6 +523,7 @@ h1 {
 .bar-label strong {
   color: var(--text);
   text-align: right;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -501,8 +546,9 @@ h1 {
 .bar-fill.teal-light { background: var(--teal-light); box-shadow: 0 0 10px rgba(163, 213, 211, 0.4); }
 
 .equity-total {
+  font-family: var(--font-mono);
   font-size: 15px;
-  font-weight: 750;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--muted-2);
 }
@@ -641,6 +687,7 @@ h1 {
 }
 
 .calendar-day {
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
   font-weight: 650;
@@ -669,8 +716,9 @@ h1 {
 }
 
 .calendar-pnl {
-  font-size: 12.5px;
-  font-weight: 750;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -690,8 +738,9 @@ h1 {
   padding: 8px 10px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.014);
-  font-size: 12.5px;
-  font-weight: 750;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--muted-2);
 }
@@ -722,7 +771,8 @@ h1 {
 .calendar-stat strong {
   display: block;
   margin-top: 4px;
-  font-size: 17px;
+  font-family: var(--font-mono);
+  font-size: 16px;
   font-variant-numeric: tabular-nums;
 }
 

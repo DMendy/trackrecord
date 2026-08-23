@@ -105,41 +105,61 @@ function mountPlanet(container) {
   halo.rotation.z = -0.25
   group.add(halo)
 
-  const orbitTilt = new THREE.Object3D()
-  orbitTilt.rotation.x = Math.PI / 2.5
-  orbitTilt.rotation.z = 0.32
-  group.add(orbitTilt)
-
-  const orbitRadius = 2.36
-  const orbit = new THREE.Mesh(
-    new THREE.TorusGeometry(orbitRadius, 0.012, 24, 240),
-    new THREE.MeshBasicMaterial({
-      color: 0x3da5a5,
-      transparent: true,
-      opacity: 0.55,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    }),
+  const reticleGeometry = new THREE.BufferGeometry().setFromPoints(
+    new THREE.EllipseCurve(0, 0, 2.18, 2.18).getPoints(180),
   )
-  orbitTilt.add(orbit)
-
-  const satellite = new THREE.Mesh(
-    new THREE.SphereGeometry(0.05, 24, 24),
-    new THREE.MeshBasicMaterial({ color: 0xeaf6f5 }),
+  const reticle = new THREE.LineLoop(
+    reticleGeometry,
+    new THREE.LineDashedMaterial({ color: 0xa3d5d3, transparent: true, opacity: 0.5, dashSize: 0.06, gapSize: 0.05 }),
   )
-  orbitTilt.add(satellite)
+  reticle.computeLineDistances()
+  reticle.rotation.x = Math.PI / 2.2
+  group.add(reticle)
 
-  const satelliteGlow = new THREE.Mesh(
-    new THREE.SphereGeometry(0.13, 24, 24),
-    new THREE.MeshBasicMaterial({
-      color: 0xa3d5d3,
-      transparent: true,
-      opacity: 0.45,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    }),
-  )
-  satellite.add(satelliteGlow)
+  const ringConfigs = [
+    { radius: 2.36, tiltX: Math.PI / 2.5, tiltZ: 0.32, speed: 0.5, size: 0.05, opacity: 0.55 },
+    { radius: 2.72, tiltX: Math.PI / 2.15, tiltZ: -0.6, speed: -0.34, size: 0.036, opacity: 0.34 },
+    { radius: 2.12, tiltX: Math.PI / 1.7, tiltZ: 1.05, speed: 0.7, size: 0.03, opacity: 0.3 },
+  ]
+
+  const satellites = ringConfigs.map(config => {
+    const tilt = new THREE.Object3D()
+    tilt.rotation.x = config.tiltX
+    tilt.rotation.z = config.tiltZ
+    group.add(tilt)
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(config.radius, 0.01, 20, 200),
+      new THREE.MeshBasicMaterial({
+        color: 0x3da5a5,
+        transparent: true,
+        opacity: config.opacity,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    )
+    tilt.add(ring)
+
+    const satellite = new THREE.Mesh(
+      new THREE.SphereGeometry(config.size, 20, 20),
+      new THREE.MeshBasicMaterial({ color: 0xeaf6f5 }),
+    )
+    tilt.add(satellite)
+
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(config.size * 2.6, 20, 20),
+      new THREE.MeshBasicMaterial({
+        color: 0xa3d5d3,
+        transparent: true,
+        opacity: 0.4,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    )
+    satellite.add(glow)
+
+    return { satellite, radius: config.radius, speed: config.speed }
+  })
 
   const resize = () => {
     const bounds = container.getBoundingClientRect()
@@ -172,11 +192,13 @@ function mountPlanet(container) {
     planet.rotation.y = time * 0.34
     atmosphere.rotation.y = time * 0.12
     halo.rotation.z = time * 0.22
-    orbitTilt.rotation.y = time * 0.05
+    reticle.rotation.z = -time * 0.08
     stars.rotation.y = time * 0.01
 
-    const satelliteAngle = time * 0.5
-    satellite.position.set(Math.cos(satelliteAngle) * orbitRadius, Math.sin(satelliteAngle) * orbitRadius, 0)
+    satellites.forEach(sat => {
+      const angle = time * sat.speed
+      sat.satellite.position.set(Math.cos(angle) * sat.radius, Math.sin(angle) * sat.radius, 0)
+    })
 
     renderer.render(scene, camera)
     frameId = window.requestAnimationFrame(animate)
