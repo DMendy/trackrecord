@@ -1,4 +1,5 @@
 import { createApp } from '/vendor/vue/vue.esm-browser.prod.js'
+import * as THREE from '/vendor/three/three.module.js'
 
 const DEFAULT_API_URL = 'https://vibrant-quietude-production-374a.up.railway.app'
 const API = window.TRACK_RECORD_API_URL
@@ -11,6 +12,146 @@ function apiUrl(path) {
 function assetUrl(path) {
   if (!path || path.startsWith('http') || path.startsWith('data:')) return path
   return `${API}${path}`
+}
+
+function mountPlanet(container) {
+  if (!container) return () => {}
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const scene = new THREE.Scene()
+  const camera = new THREE.OrthographicCamera(-3, 3, 2, -2, 0.1, 100)
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true })
+  const clock = new THREE.Clock()
+  const group = new THREE.Group()
+  const textureLoader = new THREE.TextureLoader()
+  const logoTexture = textureLoader.load('/ceoverse-logo.png')
+  let frameId
+
+  logoTexture.colorSpace = THREE.SRGBColorSpace
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  renderer.setClearColor(0x000000, 0)
+  container.appendChild(renderer.domElement)
+
+  camera.position.set(0, 0, 10)
+  scene.add(group)
+  scene.add(new THREE.AmbientLight(0xffffff, 1.45))
+
+  const keyLight = new THREE.PointLight(0x3da5a5, 4.4, 12)
+  keyLight.position.set(2.4, 2.2, 4)
+  scene.add(keyLight)
+
+  const rimLight = new THREE.PointLight(0xffffff, 1.8, 10)
+  rimLight.position.set(-2.2, -1.2, 3.4)
+  scene.add(rimLight)
+
+  const planet = new THREE.Mesh(
+    new THREE.SphereGeometry(1.5, 96, 96),
+    new THREE.MeshStandardMaterial({ color: 0x0f4c5c, roughness: 0.28, metalness: 0.22, emissive: 0x08252d, emissiveIntensity: 0.52 }),
+  )
+  group.add(planet)
+
+  const atmosphere = new THREE.Mesh(
+    new THREE.SphereGeometry(1.74, 96, 96),
+    new THREE.MeshBasicMaterial({ color: 0x3da5a5, transparent: true, opacity: 0.14, side: THREE.BackSide }),
+  )
+  group.add(atmosphere)
+
+  const logoBadge = new THREE.Mesh(
+    new THREE.CircleGeometry(0.82, 96),
+    new THREE.MeshBasicMaterial({ map: logoTexture, transparent: true, depthTest: false }),
+  )
+  logoBadge.position.set(0, 0, 1.54)
+  logoBadge.renderOrder = 3
+  group.add(logoBadge)
+
+  const logoGlow = new THREE.Mesh(
+    new THREE.CircleGeometry(1.04, 96),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.16, depthTest: false }),
+  )
+  logoGlow.position.set(0, 0, 1.5)
+  logoGlow.renderOrder = 2
+  group.add(logoGlow)
+
+  const halo = new THREE.Mesh(
+    new THREE.TorusGeometry(1.96, 0.042, 32, 220),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.78 }),
+  )
+  halo.rotation.x = Math.PI / 2.42
+  halo.rotation.z = -0.25
+  group.add(halo)
+
+  const orbit = new THREE.Mesh(
+    new THREE.TorusGeometry(2.36, 0.016, 24, 240),
+    new THREE.MeshBasicMaterial({ color: 0x3da5a5, transparent: true, opacity: 0.46 }),
+  )
+  orbit.rotation.x = Math.PI / 2.5
+  orbit.rotation.z = 0.32
+  group.add(orbit)
+
+  const resize = () => {
+    const bounds = container.getBoundingClientRect()
+    const width = Math.max(1, Math.round(container.clientWidth || bounds.width || 320))
+    const height = Math.max(1, Math.round(container.clientHeight || bounds.height || 320))
+    const viewHeight = 4.9
+    const viewWidth = viewHeight * (width / height)
+
+    renderer.setSize(width, height, false)
+    camera.left = -viewWidth / 2
+    camera.right = viewWidth / 2
+    camera.top = viewHeight / 2
+    camera.bottom = -viewHeight / 2
+    camera.updateProjectionMatrix()
+  }
+
+  let resizeFrame
+  const queueResize = () => {
+    window.cancelAnimationFrame(resizeFrame)
+    resizeFrame = window.requestAnimationFrame(resize)
+  }
+
+  const animate = () => {
+    const elapsed = clock.getElapsedTime()
+    const time = reduceMotion ? 0 : elapsed
+
+    group.position.set(0, 0, 0)
+    group.rotation.x = -0.04 + Math.sin(time * 0.22) * 0.025
+    group.rotation.y = Math.sin(time * 0.24) * 0.05
+    planet.rotation.y = time * 0.34
+    atmosphere.rotation.y = time * 0.12
+    halo.rotation.z = time * 0.22
+    orbit.rotation.z = time * 0.12
+    logoGlow.scale.setScalar(1 + Math.sin(time * 1.4) * 0.03)
+
+    renderer.render(scene, camera)
+    frameId = window.requestAnimationFrame(animate)
+  }
+
+  resize()
+  window.requestAnimationFrame(resize)
+  window.setTimeout(resize, 250)
+  animate()
+
+  const observer = new ResizeObserver(resize)
+  observer.observe(container)
+  window.addEventListener('scroll', queueResize, { passive: true })
+  window.addEventListener('resize', queueResize)
+
+  return () => {
+    window.cancelAnimationFrame(frameId)
+    window.cancelAnimationFrame(resizeFrame)
+    observer.disconnect()
+    window.removeEventListener('scroll', queueResize)
+    window.removeEventListener('resize', queueResize)
+    renderer.dispose()
+    logoTexture.dispose()
+    scene.traverse(object => {
+      if (object.geometry) object.geometry.dispose()
+      if (object.material) {
+        if (object.material.map) object.material.map.dispose()
+        object.material.dispose()
+      }
+    })
+    if (renderer.domElement.parentNode === container) container.removeChild(renderer.domElement)
+  }
 }
 
 const blankTrade = () => ({
@@ -193,6 +334,7 @@ createApp({
   mounted() {
     this.load()
     this.connectStream()
+    mountPlanet(this.$refs.planetMount)
   },
 
   methods: {
@@ -329,9 +471,10 @@ createApp({
 
   template: `
     <main class="app">
+      <div class="planet-bg" ref="planetMount"></div>
       <header class="topbar">
         <div class="brand">
-          <div class="logo">TJ</div>
+          <div class="logo"><img src="/ceoverse-logo.png" alt="Ceoverse" /></div>
           <div>
             <h1>Trading Journal</h1>
             <p class="subtitle">ATM · Track record · Prop firm 100K</p>

@@ -20,6 +20,7 @@ app.use(cors())
 app.use(express.json({ limit: '20mb' }))
 app.use(express.static(path.join(__dirname, 'public')))
 app.use('/vendor/vue', express.static(path.join(__dirname, 'node_modules', 'vue', 'dist')))
+app.use('/vendor/three', express.static(path.join(__dirname, 'node_modules', 'three', 'build')))
 
 fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 

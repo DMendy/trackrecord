@@ -10,15 +10,11 @@
   --muted-2: #aab2c0;
   --text: #f4f6fa;
   --green: #4fd8a0;
-  --green-soft: rgba(79, 216, 160, 0.14);
   --red: #ff6b66;
   --red-soft: rgba(255, 107, 102, 0.14);
-  --blue: #6fa2ff;
-  --blue-soft: rgba(111, 162, 255, 0.14);
-  --amber: #f0bd5f;
-  --amber-soft: rgba(240, 189, 95, 0.14);
-  --violet: #b18aff;
-  --violet-soft: rgba(177, 138, 255, 0.14);
+  --teal-deep: #0f4c5c;
+  --teal: #3da5a5;
+  --teal-light: #a3d5d3;
   --radius: 12px;
   --radius-sm: 8px;
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
@@ -43,34 +39,50 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-body::before,
-body::after {
+body::before {
   content: "";
   position: fixed;
   z-index: 0;
+  top: -18%;
+  left: -12%;
   width: 60vw;
   height: 60vh;
   filter: blur(70px);
   pointer-events: none;
-}
-
-body::before {
-  top: -18%;
-  left: -12%;
-  background: radial-gradient(closest-side, rgba(79, 216, 160, 0.13), transparent 70%);
+  background: radial-gradient(closest-side, rgba(15, 76, 92, 0.22), transparent 70%);
   animation: drift 22s ease-in-out infinite alternate;
-}
-
-body::after {
-  top: 10%;
-  right: -18%;
-  background: radial-gradient(closest-side, rgba(111, 162, 255, 0.11), transparent 70%);
-  animation: drift 26s ease-in-out infinite alternate-reverse;
 }
 
 @keyframes drift {
   from { transform: translate(-4%, -2%) scale(1); }
   to { transform: translate(4%, 3%) scale(1.08); }
+}
+
+.planet-bg {
+  position: fixed;
+  z-index: 0;
+  top: -120px;
+  right: -120px;
+  width: 560px;
+  height: 560px;
+  max-width: 60vw;
+  max-height: 60vw;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.planet-bg canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+@media (max-width: 760px) {
+  .planet-bg {
+    opacity: 0.32;
+    width: 360px;
+    height: 360px;
+  }
 }
 
 @keyframes rise {
@@ -135,15 +147,22 @@ h1, h2, h3, p {
   display: grid;
   width: 36px;
   height: 36px;
+  padding: 6px;
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-sm);
-  background: linear-gradient(155deg, rgba(79, 216, 160, 0.9), rgba(111, 162, 255, 0.85));
-  color: #06120f;
+  background: linear-gradient(155deg, var(--teal) 0%, var(--teal-deep) 100%);
+  color: #f7f4ef;
   font-weight: 800;
   font-size: 13px;
   letter-spacing: 0.02em;
-  box-shadow: 0 0 18px rgba(79, 216, 160, 0.25);
+  box-shadow: 0 0 18px rgba(61, 165, 165, 0.3);
+}
+
+.logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 h1 {
@@ -184,14 +203,14 @@ h1 {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--teal);
   animation: livepulse 2.2s ease-out infinite;
 }
 
 @keyframes livepulse {
-  0% { box-shadow: 0 0 0 0 rgba(79, 216, 160, 0.45); }
-  70% { box-shadow: 0 0 0 9px rgba(79, 216, 160, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(79, 216, 160, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(61, 165, 165, 0.5); }
+  70% { box-shadow: 0 0 0 9px rgba(61, 165, 165, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(61, 165, 165, 0); }
 }
 
 /* ---------- Buttons ---------- */
@@ -218,15 +237,15 @@ h1 {
 
 .btn.primary {
   border-color: transparent;
-  background: var(--green);
-  color: #06170f;
+  background: var(--teal);
+  color: #06171a;
   font-weight: 700;
   transition: border-color 160ms ease, background 160ms ease, box-shadow 200ms ease, transform 160ms ease;
 }
 
 .btn.primary:hover {
-  background: #6fe4b6;
-  box-shadow: 0 0 22px rgba(79, 216, 160, 0.35);
+  background: var(--teal-light);
+  box-shadow: 0 0 22px rgba(61, 165, 165, 0.4);
   transform: translateY(-1px);
 }
 
@@ -347,25 +366,22 @@ h1 {
   flex: 1;
 }
 
-.metric.tone-blue { background: linear-gradient(160deg, rgba(111, 162, 255, 0.12), var(--panel) 65%); border-color: rgba(111, 162, 255, 0.25); }
-.metric.tone-blue .metric-icon { background: rgba(111, 162, 255, 0.22); color: var(--blue); }
+.metric.tone-teal-deep { background: linear-gradient(160deg, rgba(15, 76, 92, 0.32), var(--panel) 65%); border-color: rgba(15, 76, 92, 0.55); }
+.metric.tone-teal-deep .metric-icon { background: rgba(15, 76, 92, 0.4); color: var(--teal-light); }
 
-.metric.tone-amber { background: linear-gradient(160deg, rgba(240, 189, 95, 0.12), var(--panel) 65%); border-color: rgba(240, 189, 95, 0.25); }
-.metric.tone-amber .metric-icon { background: rgba(240, 189, 95, 0.22); color: var(--amber); }
+.metric.tone-teal-mid { background: linear-gradient(160deg, rgba(61, 165, 165, 0.16), var(--panel) 65%); border-color: rgba(61, 165, 165, 0.32); }
+.metric.tone-teal-mid .metric-icon { background: rgba(61, 165, 165, 0.24); color: var(--teal); }
 
-.metric.tone-green { background: linear-gradient(160deg, rgba(79, 216, 160, 0.12), var(--panel) 65%); border-color: rgba(79, 216, 160, 0.25); }
-.metric.tone-green .metric-icon { background: rgba(79, 216, 160, 0.22); color: var(--green); }
-
-.metric.tone-violet { background: linear-gradient(160deg, rgba(177, 138, 255, 0.12), var(--panel) 65%); border-color: rgba(177, 138, 255, 0.25); }
-.metric.tone-violet .metric-icon { background: rgba(177, 138, 255, 0.22); color: var(--violet); }
+.metric.tone-teal-light { background: linear-gradient(160deg, rgba(163, 213, 211, 0.14), var(--panel) 65%); border-color: rgba(163, 213, 211, 0.3); }
+.metric.tone-teal-light .metric-icon { background: rgba(163, 213, 211, 0.22); color: var(--teal-light); }
 
 .metric.tone-pnl.good { background: linear-gradient(160deg, rgba(79, 216, 160, 0.12), var(--panel) 65%); border-color: rgba(79, 216, 160, 0.25); }
 .metric.tone-pnl.good .metric-icon { background: rgba(79, 216, 160, 0.22); color: var(--green); }
 .metric.tone-pnl.bad { background: linear-gradient(160deg, rgba(255, 107, 102, 0.12), var(--panel) 65%); border-color: rgba(255, 107, 102, 0.25); }
 .metric.tone-pnl.bad .metric-icon { background: rgba(255, 107, 102, 0.22); color: var(--red); }
 
-.metric.tone-teal { background: linear-gradient(160deg, rgba(79, 216, 160, 0.1), rgba(111, 162, 255, 0.08) 60%, var(--panel) 90%); border-color: rgba(111, 162, 255, 0.22); }
-.metric.tone-teal .metric-icon { background: linear-gradient(155deg, rgba(79, 216, 160, 0.28), rgba(111, 162, 255, 0.28)); color: var(--text); }
+.metric.tone-teal { background: linear-gradient(160deg, rgba(15, 76, 92, 0.3), rgba(61, 165, 165, 0.14) 60%, var(--panel) 90%); border-color: rgba(61, 165, 165, 0.35); }
+.metric.tone-teal .metric-icon { background: linear-gradient(155deg, var(--teal), var(--teal-deep)); color: #f7f4ef; }
 
 .metric-spark {
   position: absolute;
@@ -446,8 +462,8 @@ h1 {
 }
 
 .panel:hover {
-  border-color: rgba(79, 216, 160, 0.16);
-  box-shadow: var(--shadow), 0 0 28px rgba(79, 216, 160, 0.05);
+  border-color: rgba(61, 165, 165, 0.22);
+  box-shadow: var(--shadow), 0 0 28px rgba(61, 165, 165, 0.07);
 }
 
 /* ---------- Analytics ---------- */
@@ -497,9 +513,9 @@ h1 {
   transition: width 220ms ease;
 }
 
-.bar-fill.blue { background: var(--blue); box-shadow: 0 0 10px rgba(111, 162, 255, 0.35); }
-.bar-fill.violet { background: var(--violet); box-shadow: 0 0 10px rgba(177, 138, 255, 0.35); }
-.bar-fill.green { background: var(--green); box-shadow: 0 0 10px rgba(79, 216, 160, 0.35); }
+.bar-fill.teal-deep { background: var(--teal-deep); box-shadow: 0 0 10px rgba(15, 76, 92, 0.5); }
+.bar-fill.teal-mid { background: var(--teal); box-shadow: 0 0 10px rgba(61, 165, 165, 0.4); }
+.bar-fill.teal-light { background: var(--teal-light); box-shadow: 0 0 10px rgba(163, 213, 211, 0.4); }
 
 .equity-total {
   font-size: 15px;
@@ -684,8 +700,8 @@ h1 {
   background: var(--panel-2);
 }
 
-.calendar-stat.tone-blue { background: linear-gradient(160deg, rgba(111, 162, 255, 0.14), var(--panel-2) 70%); border-color: rgba(111, 162, 255, 0.28); }
-.calendar-stat.tone-violet { background: linear-gradient(160deg, rgba(177, 138, 255, 0.14), var(--panel-2) 70%); border-color: rgba(177, 138, 255, 0.28); }
+.calendar-stat.tone-teal-mid { background: linear-gradient(160deg, rgba(61, 165, 165, 0.16), var(--panel-2) 70%); border-color: rgba(61, 165, 165, 0.32); }
+.calendar-stat.tone-teal-deep { background: linear-gradient(160deg, rgba(15, 76, 92, 0.32), var(--panel-2) 70%); border-color: rgba(15, 76, 92, 0.55); }
 .calendar-stat.tone-pnl.good { background: linear-gradient(160deg, rgba(79, 216, 160, 0.14), var(--panel-2) 70%); border-color: rgba(79, 216, 160, 0.28); }
 .calendar-stat.tone-pnl.bad { background: linear-gradient(160deg, rgba(255, 107, 102, 0.14), var(--panel-2) 70%); border-color: rgba(255, 107, 102, 0.28); }
 
