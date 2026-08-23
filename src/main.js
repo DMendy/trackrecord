@@ -131,46 +131,12 @@ function mountPlanet(container) {
   }
 }
 
-const blankTrade = () => ({
-  symbol: '',
-  direction: 'LONG',
-  timeframe: '4H',
-  strategy: 'ATM',
-  session: 'London',
-  entry: null,
-  sl: null,
-  tp1: null,
-  tp2: null,
-  rr: null,
-  note: null,
-  status: 'open',
-  result_price: null,
-  pnl_pct: null,
-  pnl_amount: null,
-  risk_pct: null,
-  position_size: null,
-  image_url: '',
-  setup: '',
-  comment: '',
-  tags: [],
-  prop_firm: true,
-  pillars: {
-    prix: null,
-    momentum: null,
-    structure: null,
-  },
-})
-
 createApp({
   data() {
     return {
       trades: [],
       stats: {},
       propFirm: {},
-      editorOpen: false,
-      editingId: null,
-      form: blankTrade(),
-      saving: false,
       calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
       calendarAuto: true,
     }
@@ -381,66 +347,6 @@ createApp({
       }
     },
 
-    openNew() {
-      this.editingId = null
-      this.form = blankTrade()
-      this.editorOpen = true
-    },
-
-    async saveTrade() {
-      this.saving = true
-      const payload = {
-        ...this.form,
-        entry: this.toNumber(this.form.entry),
-        sl: this.toNumber(this.form.sl),
-        tp1: this.toNumber(this.form.tp1),
-        tp2: this.toNumber(this.form.tp2),
-        rr: this.toNumber(this.form.rr),
-        note: this.toNumber(this.form.note),
-        result_price: this.toNumber(this.form.result_price),
-        pnl_pct: this.toNumber(this.form.pnl_pct),
-        pnl_amount: this.toNumber(this.form.pnl_amount),
-        risk_pct: this.toNumber(this.form.risk_pct),
-        position_size: this.toNumber(this.form.position_size),
-      }
-
-      const url = this.editingId ? apiUrl(`/api/trades/${this.editingId}`) : apiUrl('/api/trades')
-      const method = this.editingId ? 'PATCH' : 'POST'
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      if (response.ok) {
-        this.editorOpen = false
-        await this.load()
-      }
-      this.saving = false
-    },
-
-    async uploadImage(event) {
-      const file = event.target.files?.[0]
-      if (!file) return
-      const dataUrl = await new Promise(resolve => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(reader.result)
-        reader.readAsDataURL(file)
-      })
-      const response = await fetch(apiUrl('/api/uploads'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name, data_url: dataUrl }),
-      })
-      const result = await response.json()
-      this.form.image_url = result.image_url
-    },
-
-    toNumber(value) {
-      if (value === '' || value === null || value === undefined) return null
-      const number = Number(value)
-      return Number.isFinite(number) ? number : null
-    },
 
     formatDate(value) {
       if (!value) return '-'
@@ -468,7 +374,6 @@ createApp({
         <div class="top-actions">
           <span class="status-pill"><span class="live-dot"></span><span class="status-label">Live</span></span>
           <button class="btn ghost" @click="load">Refresh</button>
-          <button class="btn primary" @click="openNew">+ Trade</button>
         </div>
       </header>
 
@@ -579,68 +484,6 @@ createApp({
             <div v-else class="empty">Aucun trade pour le moment</div>
           </article>
         </section>
-      </div>
-
-      <div v-if="editorOpen" class="drawer">
-        <div @click="editorOpen = false"></div>
-        <form class="drawer-form" @submit.prevent="saveTrade">
-          <div class="section-head">
-            <h2>{{ editingId ? 'Modifier Trade' : 'Nouveau Trade' }}</h2>
-            <button type="button" class="icon-btn" @click="editorOpen = false">×</button>
-          </div>
-          <div class="form-section">
-            <p class="form-section-title">Trade</p>
-            <div class="form-grid">
-              <label><span class="label">Pair</span><input class="field" v-model="form.symbol" required /></label>
-              <label><span class="label">Status</span><select class="select" v-model="form.status"><option>open</option><option>win</option><option>loss</option><option>breakeven</option></select></label>
-              <label><span class="label">Direction</span><select class="select" v-model="form.direction"><option>LONG</option><option>SHORT</option></select></label>
-              <label><span class="label">Timeframe</span><input class="field" v-model="form.timeframe" /></label>
-              <label><span class="label">Strategy</span><input class="field" v-model="form.strategy" /></label>
-              <label><span class="label">Session</span><select class="select" v-model="form.session"><option>Asia</option><option>London</option><option>New York</option><option>Other</option></select></label>
-            </div>
-          </div>
-
-          <div class="form-section">
-            <p class="form-section-title">Niveaux &amp; risque</p>
-            <div class="form-grid">
-              <label><span class="label">Entry</span><input class="field" type="number" step="any" v-model="form.entry" /></label>
-              <label><span class="label">SL</span><input class="field" type="number" step="any" v-model="form.sl" /></label>
-              <label><span class="label">TP1</span><input class="field" type="number" step="any" v-model="form.tp1" /></label>
-              <label><span class="label">TP2</span><input class="field" type="number" step="any" v-model="form.tp2" /></label>
-              <label><span class="label">RR</span><input class="field" type="number" step="any" v-model="form.rr" /></label>
-              <label><span class="label">Note /10</span><input class="field" type="number" step="any" v-model="form.note" /></label>
-              <label><span class="label">PnL %</span><input class="field" type="number" step="any" v-model="form.pnl_pct" /></label>
-              <label><span class="label">PnL $</span><input class="field" type="number" step="any" v-model="form.pnl_amount" /></label>
-              <label><span class="label">Risk %</span><input class="field" type="number" step="any" v-model="form.risk_pct" /></label>
-              <label><span class="label">Position size</span><input class="field" type="number" step="any" v-model="form.position_size" /></label>
-            </div>
-          </div>
-
-          <div class="form-section">
-            <p class="form-section-title">Piliers ATM</p>
-            <div class="form-grid">
-              <label><span class="label">Prix</span><input class="field" v-model="form.pillars.prix" /></label>
-              <label><span class="label">Momentum</span><input class="field" v-model="form.pillars.momentum" /></label>
-              <label><span class="label">Structure</span><input class="field" v-model="form.pillars.structure" /></label>
-              <label><span class="label">Prop firm</span><select class="select" v-model="form.prop_firm"><option :value="true">Oui</option><option :value="false">Non</option></select></label>
-            </div>
-          </div>
-
-          <div class="form-section">
-            <p class="form-section-title">Chart &amp; notes</p>
-            <div class="form-grid">
-              <label class="wide"><span class="label">Image URL</span><input class="field" v-model="form.image_url" /></label>
-              <label class="wide"><span class="label">Upload chart</span><input class="field" type="file" accept="image/*" @change="uploadImage" /></label>
-              <div v-if="form.image_url" class="preview wide"><img :src="assetUrl(form.image_url)" /></div>
-              <label class="wide"><span class="label">Setup</span><textarea class="textarea" v-model="form.setup"></textarea></label>
-              <label class="wide"><span class="label">Comment</span><textarea class="textarea" v-model="form.comment"></textarea></label>
-            </div>
-          </div>
-          <div class="top-actions" style="margin-top: 16px;">
-            <button class="btn primary" type="submit">{{ saving ? 'Saving...' : 'Save trade' }}</button>
-            <button class="btn ghost" type="button" @click="editorOpen = false">Cancel</button>
-          </div>
-        </form>
       </div>
     </main>
   `,
