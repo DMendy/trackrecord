@@ -38,14 +38,14 @@ function writeTrades(trades) {
 function readPropFirm() {
   if (!fs.existsSync(PROP_FIRM_PATH)) {
     return {
-      provider: 'Prop Firm',
-      account_size: 100000,
+      provider: '5ers',
+      account_size: 200000,
       phase: 'Challenge',
-      starting_balance: 100000,
-      current_balance: 100000,
-      profit_target: 8000,
-      max_daily_drawdown: 5000,
-      max_total_drawdown: 10000,
+      starting_balance: 200000,
+      current_balance: 200000,
+      profit_target: 16000,
+      max_daily_drawdown: 10000,
+      max_total_drawdown: 20000,
       trades_taken: 0,
       max_trades: null,
       notes: '',
@@ -256,8 +256,8 @@ app.get('/api/stats', (req, res) => {
   const shortTrades = trades.filter(t => t.direction === 'SHORT')
   const propFirm = readPropFirm()
   const pnlAmount = trades.reduce((s, t) => s + (Number(t.pnl_amount) || 0), 0)
-  const currentBalance = Number(propFirm.current_balance) || Number(propFirm.starting_balance) || 100000
-  const startingBalance = Number(propFirm.starting_balance) || 100000
+  const currentBalance = Number(propFirm.current_balance) || Number(propFirm.starting_balance) || 200000
+  const startingBalance = Number(propFirm.starting_balance) || 200000
   const drawdown = Math.max(0, startingBalance - currentBalance)
 
   res.json({

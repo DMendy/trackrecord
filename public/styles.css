@@ -660,10 +660,39 @@ h1 {
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
 }
 
+.calendar-day-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
 .calendar-day {
   font-size: 11px;
   color: var(--muted);
   font-weight: 650;
+}
+
+.discipline-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--teal-deep);
+}
+
+.discipline-dot.discipline-high {
+  background: var(--teal-light);
+  box-shadow: 0 0 6px rgba(163, 213, 211, 0.7);
+}
+
+.discipline-dot.discipline-mid {
+  background: var(--teal);
+  box-shadow: 0 0 5px rgba(61, 165, 165, 0.5);
+}
+
+.discipline-dot.discipline-low {
+  background: var(--muted);
 }
 
 .calendar-pnl {
@@ -699,7 +728,7 @@ h1 {
 
 .calendar-footer {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-top: 16px;
 }
@@ -713,6 +742,7 @@ h1 {
 
 .calendar-stat.tone-teal-mid { background: linear-gradient(160deg, rgba(61, 165, 165, 0.16), var(--panel-2) 70%); border-color: rgba(61, 165, 165, 0.32); }
 .calendar-stat.tone-teal-deep { background: linear-gradient(160deg, rgba(15, 76, 92, 0.32), var(--panel-2) 70%); border-color: rgba(15, 76, 92, 0.55); }
+.calendar-stat.tone-teal-light { background: linear-gradient(160deg, rgba(163, 213, 211, 0.14), var(--panel-2) 70%); border-color: rgba(163, 213, 211, 0.3); }
 .calendar-stat.tone-pnl.good { background: linear-gradient(160deg, rgba(79, 216, 160, 0.14), var(--panel-2) 70%); border-color: rgba(79, 216, 160, 0.28); }
 .calendar-stat.tone-pnl.bad { background: linear-gradient(160deg, rgba(255, 107, 102, 0.14), var(--panel-2) 70%); border-color: rgba(255, 107, 102, 0.28); }
 

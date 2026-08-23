@@ -254,10 +254,14 @@ createApp({
         if (trade.status === 'open') return
         const dateKey = (trade.closed_at || trade.timestamp || '').slice(0, 10)
         if (!dateKey) return
-        if (!map[dateKey]) map[dateKey] = { pnl: 0, trades: 0, wins: 0 }
+        if (!map[dateKey]) map[dateKey] = { pnl: 0, trades: 0, wins: 0, compliant: 0 }
         map[dateKey].pnl += Number(trade.pnl_amount) || 0
         map[dateKey].trades += 1
         if (trade.status === 'win') map[dateKey].wins += 1
+        const pillars = trade.pillars || {}
+        if (pillars.prix === true && pillars.momentum === true && pillars.structure === true) {
+          map[dateKey].compliant += 1
+        }
       })
       return map
     },
@@ -274,7 +278,9 @@ createApp({
       for (let day = 1; day <= daysInMonth; day += 1) {
         const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
         const info = this.dailyPnl[dateKey]
-        cells.push({ day, pnl: info ? info.pnl : 0, trades: info ? info.trades : 0 })
+        const compliancePct = info && info.trades ? Math.round((info.compliant / info.trades) * 100) : null
+        const complianceTone = compliancePct === null ? '' : compliancePct >= 70 ? 'high' : compliancePct >= 40 ? 'mid' : 'low'
+        cells.push({ day, pnl: info ? info.pnl : 0, trades: info ? info.trades : 0, compliancePct, complianceTone })
       }
       while (cells.length % 7 !== 0) cells.push(null)
 
@@ -300,10 +306,12 @@ createApp({
       const trades = entries.reduce((sum, [, v]) => sum + v.trades, 0)
       const wins = entries.reduce((sum, [, v]) => sum + v.wins, 0)
       const pnl = entries.reduce((sum, [, v]) => sum + v.pnl, 0)
+      const compliant = entries.reduce((sum, [, v]) => sum + v.compliant, 0)
       return {
         trades,
         winRate: trades ? Math.round((wins / trades) * 100) : 0,
         pnl,
+        compliancePct: trades ? Math.round((compliant / trades) * 100) : 0,
       }
     },
   },
@@ -454,7 +462,7 @@ createApp({
           <div class="logo"><img src="/ceoverse-logo.png" alt="Ceoverse" /></div>
           <div>
             <h1>Trading Journal</h1>
-            <p class="subtitle">ATM · Track record · Prop firm 100K</p>
+            <p class="subtitle">ATM · Track record · 5ers 200K</p>
           </div>
         </div>
         <div class="top-actions">
@@ -513,7 +521,15 @@ createApp({
                   :class="cell ? (cell.trades ? (cell.pnl >= 0 ? 'win has-data' : 'loss has-data') : '') : 'empty'"
                 >
                   <template v-if="cell">
-                    <span class="calendar-day">{{ cell.day }}</span>
+                    <div class="calendar-day-row">
+                      <span class="calendar-day">{{ cell.day }}</span>
+                      <span
+                        v-if="cell.trades"
+                        class="discipline-dot"
+                        :class="'discipline-' + cell.complianceTone"
+                        :title="cell.compliancePct + '% conforme au plan'"
+                      ></span>
+                    </div>
                     <span v-if="cell.trades" class="calendar-pnl">{{ money(cell.pnl) }}</span>
                     <span v-if="cell.trades" class="calendar-trades">{{ cell.trades }} trade{{ cell.trades > 1 ? 's' : '' }}</span>
                   </template>
@@ -526,6 +542,7 @@ createApp({
             <div class="calendar-stat tone-teal-mid"><span class="label">Trades ce mois</span><strong>{{ monthStats.trades }}</strong></div>
             <div class="calendar-stat tone-teal-deep"><span class="label">Win rate</span><strong>{{ monthStats.winRate }}%</strong></div>
             <div class="calendar-stat tone-pnl" :class="{ good: monthStats.pnl >= 0, bad: monthStats.pnl < 0 }"><span class="label">PnL du mois</span><strong :class="{ good: monthStats.pnl >= 0, bad: monthStats.pnl < 0 }">{{ money(monthStats.pnl) }}</strong></div>
+            <div class="calendar-stat tone-teal-light"><span class="label">Conformité plan</span><strong>{{ monthStats.compliancePct }}%</strong></div>
           </div>
         </section>
 

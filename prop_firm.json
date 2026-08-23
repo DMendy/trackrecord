@@ -1,14 +1,14 @@
 {
-  "provider": "Prop Firm",
-  "account_size": 100000,
+  "provider": "5ers",
+  "account_size": 200000,
   "phase": "Challenge",
-  "starting_balance": 100000,
-  "current_balance": 100000,
-  "profit_target": 8000,
-  "max_daily_drawdown": 5000,
-  "max_total_drawdown": 10000,
+  "starting_balance": 200000,
+  "current_balance": 200000,
+  "profit_target": 16000,
+  "max_daily_drawdown": 10000,
+  "max_total_drawdown": 20000,
   "trades_taken": 0,
   "max_trades": null,
   "notes": "",
-  "updated_at": "2026-05-23T22:56:58.243Z"
+  "updated_at": "2026-08-23T00:00:00.000Z"
 }
