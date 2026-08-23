@@ -242,14 +242,17 @@ createApp({
 
   computed: {
     pillarCompliance() {
-      const total = this.trades.length
-      if (!total) return { total: 0, prixPct: 0, momentumPct: 0, structurePct: 0, fullPct: 0 }
+      const isAnalyzed = pillars => pillars.prix != null || pillars.momentum != null || pillars.structure != null
+      const analyzed = this.trades.filter(trade => isAnalyzed(trade.pillars || {}))
+      const total = analyzed.length
+      const pending = this.trades.length - total
+      if (!total) return { total: 0, pending, prixPct: 0, momentumPct: 0, structurePct: 0, fullPct: 0 }
       const score = value => (value === true ? 1 : value === 'partial' ? 0.5 : 0)
       let prixSum = 0
       let momentumSum = 0
       let structureSum = 0
       let fullCount = 0
-      this.trades.forEach(trade => {
+      analyzed.forEach(trade => {
         const pillars = trade.pillars || {}
         prixSum += score(pillars.prix)
         momentumSum += score(pillars.momentum)
@@ -258,6 +261,7 @@ createApp({
       })
       return {
         total,
+        pending,
         prixPct: Math.round((prixSum / total) * 100),
         momentumPct: Math.round((momentumSum / total) * 100),
         structurePct: Math.round((structureSum / total) * 100),
@@ -318,13 +322,17 @@ createApp({
         if (trade.status === 'open') return
         const dateKey = (trade.closed_at || trade.timestamp || '').slice(0, 10)
         if (!dateKey) return
-        if (!map[dateKey]) map[dateKey] = { pnl: 0, trades: 0, wins: 0, compliant: 0 }
+        if (!map[dateKey]) map[dateKey] = { pnl: 0, trades: 0, wins: 0, analyzed: 0, compliant: 0 }
         map[dateKey].pnl += Number(trade.pnl_amount) || 0
         map[dateKey].trades += 1
         if (trade.status === 'win') map[dateKey].wins += 1
         const pillars = trade.pillars || {}
-        if (pillars.prix === true && pillars.momentum === true && pillars.structure === true) {
-          map[dateKey].compliant += 1
+        const isAnalyzed = pillars.prix != null || pillars.momentum != null || pillars.structure != null
+        if (isAnalyzed) {
+          map[dateKey].analyzed += 1
+          if (pillars.prix === true && pillars.momentum === true && pillars.structure === true) {
+            map[dateKey].compliant += 1
+          }
         }
       })
       return map
@@ -342,7 +350,7 @@ createApp({
       for (let day = 1; day <= daysInMonth; day += 1) {
         const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
         const info = this.dailyPnl[dateKey]
-        const compliancePct = info && info.trades ? Math.round((info.compliant / info.trades) * 100) : null
+        const compliancePct = info && info.analyzed ? Math.round((info.compliant / info.analyzed) * 100) : null
         const complianceTone = compliancePct === null ? '' : compliancePct >= 70 ? 'high' : compliancePct >= 40 ? 'mid' : 'low'
         cells.push({ day, pnl: info ? info.pnl : 0, trades: info ? info.trades : 0, compliancePct, complianceTone })
       }
@@ -370,12 +378,13 @@ createApp({
       const trades = entries.reduce((sum, [, v]) => sum + v.trades, 0)
       const wins = entries.reduce((sum, [, v]) => sum + v.wins, 0)
       const pnl = entries.reduce((sum, [, v]) => sum + v.pnl, 0)
+      const analyzed = entries.reduce((sum, [, v]) => sum + v.analyzed, 0)
       const compliant = entries.reduce((sum, [, v]) => sum + v.compliant, 0)
       return {
         trades,
         winRate: trades ? Math.round((wins / trades) * 100) : 0,
         pnl,
-        compliancePct: trades ? Math.round((compliant / trades) * 100) : 0,
+        compliancePct: analyzed ? Math.round((compliant / analyzed) * 100) : 0,
       }
     },
   },
@@ -570,16 +579,17 @@ createApp({
             </div>
             <div v-if="pillarCompliance.total" class="bars">
               <div class="bar-label">
-                <span>Prix</span><div class="bar-track"><div class="bar-fill blue" :style="{ width: pillarCompliance.prixPct + '%' }"></div></div><strong>{{ pillarCompliance.prixPct }}%</strong>
+                <span>Prix</span><div class="bar-track"><div class="bar-fill teal-deep" :style="{ width: pillarCompliance.prixPct + '%' }"></div></div><strong>{{ pillarCompliance.prixPct }}%</strong>
               </div>
               <div class="bar-label">
-                <span>Momentum</span><div class="bar-track"><div class="bar-fill violet" :style="{ width: pillarCompliance.momentumPct + '%' }"></div></div><strong>{{ pillarCompliance.momentumPct }}%</strong>
+                <span>Momentum</span><div class="bar-track"><div class="bar-fill teal-mid" :style="{ width: pillarCompliance.momentumPct + '%' }"></div></div><strong>{{ pillarCompliance.momentumPct }}%</strong>
               </div>
               <div class="bar-label">
-                <span>Structure</span><div class="bar-track"><div class="bar-fill green" :style="{ width: pillarCompliance.structurePct + '%' }"></div></div><strong>{{ pillarCompliance.structurePct }}%</strong>
+                <span>Structure</span><div class="bar-track"><div class="bar-fill teal-light" :style="{ width: pillarCompliance.structurePct + '%' }"></div></div><strong>{{ pillarCompliance.structurePct }}%</strong>
               </div>
+              <p v-if="pillarCompliance.pending" class="label" style="margin-top: 2px;">{{ pillarCompliance.pending }} trade{{ pillarCompliance.pending > 1 ? 's' : '' }} en attente d'analyse</p>
             </div>
-            <div v-else class="empty">Aucun trade pour le moment</div>
+            <div v-else class="empty">Aucun trade analysé pour le moment</div>
           </article>
         </section>
       </div>
