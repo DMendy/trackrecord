@@ -23,11 +23,8 @@ function mountPlanet(container) {
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true })
   const clock = new THREE.Clock()
   const group = new THREE.Group()
-  const textureLoader = new THREE.TextureLoader()
-  const logoTexture = textureLoader.load('/ceoverse-logo.png')
   let frameId
 
-  logoTexture.colorSpace = THREE.SRGBColorSpace
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
   renderer.setClearColor(0x000000, 0)
   container.appendChild(renderer.domElement)
@@ -55,22 +52,6 @@ function mountPlanet(container) {
     new THREE.MeshBasicMaterial({ color: 0x3da5a5, transparent: true, opacity: 0.14, side: THREE.BackSide }),
   )
   group.add(atmosphere)
-
-  const logoBadge = new THREE.Mesh(
-    new THREE.CircleGeometry(0.82, 96),
-    new THREE.MeshBasicMaterial({ map: logoTexture, transparent: true, depthTest: false }),
-  )
-  logoBadge.position.set(0, 0, 1.54)
-  logoBadge.renderOrder = 3
-  group.add(logoBadge)
-
-  const logoGlow = new THREE.Mesh(
-    new THREE.CircleGeometry(1.04, 96),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.16, depthTest: false }),
-  )
-  logoGlow.position.set(0, 0, 1.5)
-  logoGlow.renderOrder = 2
-  group.add(logoGlow)
 
   const halo = new THREE.Mesh(
     new THREE.TorusGeometry(1.96, 0.042, 32, 220),
@@ -120,7 +101,6 @@ function mountPlanet(container) {
     atmosphere.rotation.y = time * 0.12
     halo.rotation.z = time * 0.22
     orbit.rotation.z = time * 0.12
-    logoGlow.scale.setScalar(1 + Math.sin(time * 1.4) * 0.03)
 
     renderer.render(scene, camera)
     frameId = window.requestAnimationFrame(animate)
@@ -143,13 +123,9 @@ function mountPlanet(container) {
     window.removeEventListener('scroll', queueResize)
     window.removeEventListener('resize', queueResize)
     renderer.dispose()
-    logoTexture.dispose()
     scene.traverse(object => {
       if (object.geometry) object.geometry.dispose()
-      if (object.material) {
-        if (object.material.map) object.material.map.dispose()
-        object.material.dispose()
-      }
+      if (object.material) object.material.dispose()
     })
     if (renderer.domElement.parentNode === container) container.removeChild(renderer.domElement)
   }

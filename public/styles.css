@@ -43,8 +43,8 @@ body::before {
   content: "";
   position: fixed;
   z-index: 0;
-  top: -18%;
-  left: -12%;
+  bottom: -22%;
+  right: -14%;
   width: 60vw;
   height: 60vh;
   filter: blur(70px);
@@ -62,7 +62,7 @@ body::before {
   position: fixed;
   z-index: 0;
   top: -120px;
-  right: -120px;
+  left: -120px;
   width: 560px;
   height: 560px;
   max-width: 60vw;
