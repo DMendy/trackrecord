@@ -1,9 +1,12 @@
 import express from 'express'
 import cors from 'cors'
 import fs from 'fs'
+import pg from 'pg'
 import { randomUUID } from 'crypto'
 import { fileURLToPath } from 'url'
 import path from 'path'
+
+const { Pool } = pg
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = process.env.DATA_PATH ?? __dirname
@@ -13,9 +16,62 @@ const SCANNER_ALERTS_PATH = path.join(DATA_DIR, 'scanner_alerts.json')
 const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads')
 const PORT = process.env.PORT ?? 3001
 
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
-if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, '[]')
-if (!fs.existsSync(SCANNER_ALERTS_PATH)) fs.writeFileSync(SCANNER_ALERTS_PATH, '[]')
+const DEFAULT_PROP_FIRM = {
+  provider: '5ers',
+  account_size: 200000,
+  phase: 'Step 1 (8/5 Plan)',
+  starting_balance: 200000,
+  current_balance: 200000,
+  profit_target: 16000,
+  max_daily_drawdown: 6000,
+  max_total_drawdown: 20000,
+  trades_taken: 0,
+  max_trades: null,
+  notes: 'Summer Plan Classic 200K, 8/5 Plan (279$). Step 1 target 8%, Step 2 target 5%. Perte max journaliere 3% (EOD), perte max totale 10%.',
+}
+
+// Postgres (Neon) if DATABASE_URL is set, otherwise fall back to local JSON files.
+const pool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  : null
+
+if (!pool) {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
+  if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, '[]')
+  if (!fs.existsSync(SCANNER_ALERTS_PATH)) fs.writeFileSync(SCANNER_ALERTS_PATH, '[]')
+}
+
+async function initDb() {
+  if (!pool) return
+
+  await pool.query('CREATE TABLE IF NOT EXISTS trades (id UUID PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), data JSONB NOT NULL)')
+  await pool.query('CREATE TABLE IF NOT EXISTS prop_firm (id INT PRIMARY KEY, data JSONB NOT NULL)')
+  await pool.query('CREATE TABLE IF NOT EXISTS scanner_alerts (id UUID PRIMARY KEY, received_at TIMESTAMPTZ NOT NULL DEFAULT now(), data JSONB NOT NULL)')
+
+  // One-time seed from the legacy JSON files (or defaults) so the migration to
+  // Postgres doesn't lose whatever was already tracked.
+  const { rows: tradeCount } = await pool.query('SELECT COUNT(*) FROM trades')
+  if (Number(tradeCount[0].count) === 0 && fs.existsSync(DB_PATH)) {
+    const existing = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'))
+    for (const trade of existing) {
+      await pool.query('INSERT INTO trades (id, created_at, data) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING', [trade.id, trade.timestamp ?? new Date().toISOString(), trade])
+    }
+  }
+
+  const { rows: pfCount } = await pool.query('SELECT COUNT(*) FROM prop_firm')
+  if (Number(pfCount[0].count) === 0) {
+    const existing = fs.existsSync(PROP_FIRM_PATH) ? JSON.parse(fs.readFileSync(PROP_FIRM_PATH, 'utf8')) : DEFAULT_PROP_FIRM
+    await pool.query('INSERT INTO prop_firm (id, data) VALUES (1, $1) ON CONFLICT (id) DO NOTHING', [existing])
+  }
+
+  const { rows: alertCount } = await pool.query('SELECT COUNT(*) FROM scanner_alerts')
+  if (Number(alertCount[0].count) === 0 && fs.existsSync(SCANNER_ALERTS_PATH)) {
+    const existing = JSON.parse(fs.readFileSync(SCANNER_ALERTS_PATH, 'utf8'))
+    for (const alert of existing) {
+      await pool.query('INSERT INTO scanner_alerts (id, received_at, data) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING', [alert.id, alert.received_at ?? new Date().toISOString(), alert])
+    }
+  }
+}
 
 const app = express()
 app.use(cors())
@@ -29,44 +85,112 @@ fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 // SSE clients
 const clients = new Set()
 
-function readTrades() {
+// ---------- Trades ----------
+
+async function readTrades() {
+  if (pool) {
+    const { rows } = await pool.query('SELECT data FROM trades ORDER BY created_at ASC')
+    return rows.map(r => r.data)
+  }
   return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'))
 }
 
-function writeTrades(trades) {
+async function insertTrade(trade) {
+  if (pool) {
+    await pool.query('INSERT INTO trades (id, created_at, data) VALUES ($1, $2, $3)', [trade.id, trade.timestamp, trade])
+    return trade
+  }
+  const trades = await readTrades()
+  trades.push(trade)
   fs.writeFileSync(DB_PATH, JSON.stringify(trades, null, 2))
+  return trade
 }
 
-function readPropFirm() {
-  if (!fs.existsSync(PROP_FIRM_PATH)) {
-    return {
-      provider: '5ers',
-      account_size: 200000,
-      phase: 'Step 1 (8/5 Plan)',
-      starting_balance: 200000,
-      current_balance: 200000,
-      profit_target: 16000,
-      max_daily_drawdown: 6000,
-      max_total_drawdown: 20000,
-      trades_taken: 0,
-      max_trades: null,
-      notes: 'Summer Plan Classic 200K, 8/5 Plan (279$). Step 1 target 8%, Step 2 target 5%. Perte max journaliere 3% (EOD), perte max totale 10%.',
-    }
+async function updateTrade(id, updater) {
+  if (pool) {
+    const { rows } = await pool.query('SELECT data FROM trades WHERE id = $1', [id])
+    if (!rows.length) return null
+    const next = updater(rows[0].data)
+    await pool.query('UPDATE trades SET data = $1 WHERE id = $2', [next, id])
+    return next
   }
+  const trades = await readTrades()
+  const idx = trades.findIndex(t => t.id === id)
+  if (idx === -1) return null
+  trades[idx] = updater(trades[idx])
+  fs.writeFileSync(DB_PATH, JSON.stringify(trades, null, 2))
+  return trades[idx]
+}
 
+async function deleteTrade(id) {
+  if (pool) {
+    const result = await pool.query('DELETE FROM trades WHERE id = $1', [id])
+    return result.rowCount > 0
+  }
+  const trades = await readTrades()
+  const filtered = trades.filter(t => t.id !== id)
+  if (filtered.length === trades.length) return false
+  fs.writeFileSync(DB_PATH, JSON.stringify(filtered, null, 2))
+  return true
+}
+
+// ---------- Prop firm ----------
+
+async function readPropFirm() {
+  if (pool) {
+    const { rows } = await pool.query('SELECT data FROM prop_firm WHERE id = 1')
+    return rows[0]?.data ?? DEFAULT_PROP_FIRM
+  }
+  if (!fs.existsSync(PROP_FIRM_PATH)) return DEFAULT_PROP_FIRM
   return JSON.parse(fs.readFileSync(PROP_FIRM_PATH, 'utf8'))
 }
 
-function writePropFirm(config) {
+async function writePropFirm(config) {
+  if (pool) {
+    await pool.query(
+      'INSERT INTO prop_firm (id, data) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET data = $1',
+      [config],
+    )
+    return
+  }
   fs.writeFileSync(PROP_FIRM_PATH, JSON.stringify(config, null, 2))
 }
 
-function readScannerAlerts() {
+// ---------- Scanner alerts ----------
+
+async function readScannerAlerts() {
+  if (pool) {
+    const { rows } = await pool.query('SELECT data FROM scanner_alerts ORDER BY received_at ASC')
+    return rows.map(r => r.data)
+  }
   return JSON.parse(fs.readFileSync(SCANNER_ALERTS_PATH, 'utf8'))
 }
 
-function writeScannerAlerts(alerts) {
+async function insertScannerAlert(alert) {
+  if (pool) {
+    await pool.query('INSERT INTO scanner_alerts (id, received_at, data) VALUES ($1, $2, $3)', [alert.id, alert.received_at, alert])
+    return alert
+  }
+  const alerts = await readScannerAlerts()
+  alerts.push(alert)
   fs.writeFileSync(SCANNER_ALERTS_PATH, JSON.stringify(alerts, null, 2))
+  return alert
+}
+
+async function updateScannerAlert(id, updater) {
+  if (pool) {
+    const { rows } = await pool.query('SELECT data FROM scanner_alerts WHERE id = $1', [id])
+    if (!rows.length) return null
+    const next = updater(rows[0].data)
+    await pool.query('UPDATE scanner_alerts SET data = $1 WHERE id = $2', [next, id])
+    return next
+  }
+  const alerts = await readScannerAlerts()
+  const idx = alerts.findIndex(a => a.id === id)
+  if (idx === -1) return null
+  alerts[idx] = updater(alerts[idx])
+  fs.writeFileSync(SCANNER_ALERTS_PATH, JSON.stringify(alerts, null, 2))
+  return alerts[idx]
 }
 
 function broadcast(event, data) {
@@ -75,26 +199,26 @@ function broadcast(event, data) {
 }
 
 // SSE stream
-app.get('/api/stream', (req, res) => {
+app.get('/api/stream', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
   res.flushHeaders()
 
   // send current state on connect
-  res.write(`event: init\ndata: ${JSON.stringify(readTrades())}\n\n`)
+  res.write(`event: init\ndata: ${JSON.stringify(await readTrades())}\n\n`)
 
   clients.add(res)
   req.on('close', () => clients.delete(res))
 })
 
 // GET all trades
-app.get('/api/trades', (req, res) => {
-  res.json(readTrades())
+app.get('/api/trades', async (req, res) => {
+  res.json(await readTrades())
 })
 
 // POST new trade (called by Claude after each ATM analysis)
-app.post('/api/trades', (req, res) => {
+app.post('/api/trades', async (req, res) => {
   const {
     symbol,
     direction,
@@ -152,20 +276,14 @@ app.post('/api/trades', (req, res) => {
     closed_at: null,
   }
 
-  const trades = readTrades()
-  trades.push(trade)
-  writeTrades(trades)
+  await insertTrade(trade)
   broadcast('trade_added', trade)
 
   res.status(201).json(trade)
 })
 
 // PATCH close a trade (you give Claude the result)
-app.patch('/api/trades/:id', (req, res) => {
-  const trades = readTrades()
-  const idx = trades.findIndex(t => t.id === req.params.id)
-  if (idx === -1) return res.status(404).json({ error: 'not found' })
-
+app.patch('/api/trades/:id', async (req, res) => {
   const editableFields = [
     'symbol',
     'direction',
@@ -200,30 +318,28 @@ app.patch('/api/trades/:id', (req, res) => {
     }
   })
 
-  trades[idx] = {
-    ...trades[idx],
+  const updated = await updateTrade(req.params.id, current => ({
+    ...current,
     ...updates,
     updated_at: new Date().toISOString(),
     closed_at: updates.status && updates.status !== 'open'
-      ? (trades[idx].closed_at ?? new Date().toISOString())
+      ? (current.closed_at ?? new Date().toISOString())
       : updates.status === 'open'
         ? null
-        : trades[idx].closed_at,
-  }
+        : current.closed_at,
+  }))
 
-  writeTrades(trades)
-  broadcast('trade_updated', trades[idx])
+  if (!updated) return res.status(404).json({ error: 'not found' })
 
-  res.json(trades[idx])
+  broadcast('trade_updated', updated)
+  res.json(updated)
 })
 
 // DELETE a trade
-app.delete('/api/trades/:id', (req, res) => {
-  const trades = readTrades()
-  const filtered = trades.filter(t => t.id !== req.params.id)
-  if (filtered.length === trades.length) return res.status(404).json({ error: 'not found' })
+app.delete('/api/trades/:id', async (req, res) => {
+  const deleted = await deleteTrade(req.params.id)
+  if (!deleted) return res.status(404).json({ error: 'not found' })
 
-  writeTrades(filtered)
   broadcast('trade_deleted', { id: req.params.id })
   res.status(204).end()
 })
@@ -246,28 +362,28 @@ app.post('/api/uploads', (req, res) => {
   res.status(201).json({ image_url: `/uploads/${storedName}` })
 })
 
-app.get('/api/prop-firm', (req, res) => {
-  res.json(readPropFirm())
+app.get('/api/prop-firm', async (req, res) => {
+  res.json(await readPropFirm())
 })
 
-app.put('/api/prop-firm', (req, res) => {
-  const next = { ...readPropFirm(), ...req.body, updated_at: new Date().toISOString() }
-  writePropFirm(next)
+app.put('/api/prop-firm', async (req, res) => {
+  const next = { ...(await readPropFirm()), ...req.body, updated_at: new Date().toISOString() }
+  await writePropFirm(next)
   broadcast('prop_firm_updated', next)
   res.json(next)
 })
 
 // Webhook receiver for harmonicpattern.com (or any scanner) pattern alerts.
-// Payload shape is not assumed — whatever JSON the scanner sends is stored as-is
-// under `payload`, so Claude can interpret it when reviewing on demand.
-app.post('/api/scanner-alerts', (req, res) => {
+// Payload shape is not assumed beyond the known { msg_type, data: [...] } shape —
+// unrecognized fields are kept under `payload` so Claude can interpret them.
+app.post('/api/scanner-alerts', async (req, res) => {
   // harmonicpattern.com sends { msg_type, data: [...] } — one message can carry
   // several pattern notifications at once. Fall back to treating the whole body
   // as a single item for any other scanner that might post here later.
   const items = Array.isArray(req.body?.data) ? req.body.data : [req.body]
 
-  const alerts = readScannerAlerts()
-  const created = items.map(item => {
+  const created = []
+  for (const item of items) {
     const alert = {
       id: randomUUID(),
       received_at: new Date().toISOString(),
@@ -289,29 +405,24 @@ app.post('/api/scanner-alerts', (req, res) => {
       source_url: item.url ?? null,
       payload: item,
     }
-    alerts.push(alert)
-    return alert
-  })
+    await insertScannerAlert(alert)
+    created.push(alert)
+  }
 
-  writeScannerAlerts(alerts)
   created.forEach(alert => broadcast('scanner_alert_received', alert))
 
   res.status(201).json({ received: created.length, alerts: created })
 })
 
 // GET alerts, optionally filtered by status (?status=pending)
-app.get('/api/scanner-alerts', (req, res) => {
-  const alerts = readScannerAlerts()
+app.get('/api/scanner-alerts', async (req, res) => {
+  const alerts = await readScannerAlerts()
   const { status } = req.query
   res.json(status ? alerts.filter(a => a.status === status) : alerts)
 })
 
 // Mark an alert as reviewed once Claude has analyzed it
-app.patch('/api/scanner-alerts/:id', (req, res) => {
-  const alerts = readScannerAlerts()
-  const idx = alerts.findIndex(a => a.id === req.params.id)
-  if (idx === -1) return res.status(404).json({ error: 'not found' })
-
+app.patch('/api/scanner-alerts/:id', async (req, res) => {
   const editableFields = ['status', 'verdict', 'note']
   const updates = {}
   editableFields.forEach(field => {
@@ -320,26 +431,26 @@ app.patch('/api/scanner-alerts/:id', (req, res) => {
     }
   })
 
-  alerts[idx] = {
-    ...alerts[idx],
+  const updated = await updateScannerAlert(req.params.id, current => ({
+    ...current,
     ...updates,
-    reviewed_at: updates.status === 'reviewed' ? (alerts[idx].reviewed_at ?? new Date().toISOString()) : alerts[idx].reviewed_at,
-  }
+    reviewed_at: updates.status === 'reviewed' ? (current.reviewed_at ?? new Date().toISOString()) : current.reviewed_at,
+  }))
 
-  writeScannerAlerts(alerts)
-  broadcast('scanner_alert_updated', alerts[idx])
+  if (!updated) return res.status(404).json({ error: 'not found' })
 
-  res.json(alerts[idx])
+  broadcast('scanner_alert_updated', updated)
+  res.json(updated)
 })
 
 // stats endpoint (bonus)
-app.get('/api/stats', (req, res) => {
-  const trades = readTrades()
+app.get('/api/stats', async (req, res) => {
+  const trades = await readTrades()
   const closed = trades.filter(t => t.status !== 'open')
   const wins = closed.filter(t => t.status === 'win')
   const longTrades = trades.filter(t => t.direction === 'LONG')
   const shortTrades = trades.filter(t => t.direction === 'SHORT')
-  const propFirm = readPropFirm()
+  const propFirm = await readPropFirm()
   const pnlAmount = trades.reduce((s, t) => s + (Number(t.pnl_amount) || 0), 0)
   const currentBalance = Number(propFirm.current_balance) || Number(propFirm.starting_balance) || 200000
   const startingBalance = Number(propFirm.starting_balance) || 200000
@@ -374,6 +485,13 @@ app.get('/api/stats', (req, res) => {
   })
 })
 
-app.listen(PORT, () => {
-  console.log(`track_record API running on http://localhost:${PORT}`)
-})
+initDb()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`track_record API running on http://localhost:${PORT} (storage: ${pool ? 'postgres' : 'json files'})`)
+    })
+  })
+  .catch(err => {
+    console.error('Failed to initialize database', err)
+    process.exit(1)
+  })
