@@ -446,10 +446,15 @@ app.post('/api/scanner-sync', async (req, res) => {
   let notifications
   try {
     const response = await fetch(`https://harmonicpattern.com/api/v1/account/notification?token=${apiKey}`)
+    const bodyText = await response.text()
     if (!response.ok) {
-      return res.status(502).json({ error: `harmonicpattern.com responded ${response.status}` })
+      return res.status(502).json({ error: `harmonicpattern.com responded ${response.status}`, body: bodyText.slice(0, 500) })
     }
-    notifications = await response.json()
+    try {
+      notifications = JSON.parse(bodyText)
+    } catch {
+      return res.status(502).json({ error: 'harmonicpattern.com returned non-JSON response', body: bodyText.slice(0, 500) })
+    }
   } catch (err) {
     return res.status(502).json({ error: `Failed to reach harmonicpattern.com: ${err.message}` })
   }
