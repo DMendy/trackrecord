@@ -376,6 +376,48 @@ app.put('/api/prop-firm', async (req, res) => {
 // Webhook receiver for harmonicpattern.com (or any scanner) pattern alerts.
 // Payload shape is not assumed beyond the known { msg_type, data: [...] } shape —
 // unrecognized fields are kept under `payload` so Claude can interpret them.
+function normalizeAlert(item) {
+  // "id" comes from /account/notification pulls; webhook payloads don't include
+  // one, so fall back to parsing it from the notification URL (#noti/12345).
+  const sourceId = item.id != null
+    ? String(item.id)
+    : (typeof item.url === 'string' ? item.url.match(/noti\/(\d+)/)?.[1] ?? null : null)
+
+  return {
+    id: randomUUID(),
+    received_at: new Date().toISOString(),
+    status: 'pending', // 'pending' | 'reviewed'
+    reviewed_at: null,
+    verdict: null, // e.g. 'valid_setup' | 'rejected'
+    note: null,
+    source_id: sourceId, // harmonicpattern.com notification id, for dedup across pulls
+    pattern_type: item.patterntype ?? null,   // 'bullish' | 'bearish'
+    pattern_name: item.patternname ?? null,   // e.g. 'deep crab'
+    pattern_class: item.patternclass ?? null, // 'harmonic' | 'chart' | ...
+    pattern_status: item.status ?? null,      // 'complete' | ...
+    symbol: item.displaySymbol ?? item.symbol ?? null,
+    broker_symbol: item.symbol ?? null,
+    timeframe: item.timeframe ?? null,
+    entry: item.entry ?? null,
+    stoploss: item.stoploss ?? null,
+    profit1: item.profit1 ?? null,
+    profit2: item.profit2 ?? null,
+    rrratio: item.rrratio ?? null,
+    source_url: item.url ?? null,
+    payload: item,
+  }
+}
+
+async function scannerAlertExistsBySourceId(sourceId) {
+  if (!sourceId) return false
+  if (pool) {
+    const { rows } = await pool.query("SELECT 1 FROM scanner_alerts WHERE data->>'source_id' = $1 LIMIT 1", [sourceId])
+    return rows.length > 0
+  }
+  const alerts = await readScannerAlerts()
+  return alerts.some(a => a.source_id === sourceId)
+}
+
 app.post('/api/scanner-alerts', async (req, res) => {
   // harmonicpattern.com sends { msg_type, data: [...] } — one message can carry
   // several pattern notifications at once. Fall back to treating the whole body
@@ -384,27 +426,7 @@ app.post('/api/scanner-alerts', async (req, res) => {
 
   const created = []
   for (const item of items) {
-    const alert = {
-      id: randomUUID(),
-      received_at: new Date().toISOString(),
-      status: 'pending', // 'pending' | 'reviewed'
-      reviewed_at: null,
-      verdict: null, // e.g. 'valid_setup' | 'rejected'
-      note: null,
-      pattern_type: item.patterntype ?? null,   // 'bullish' | 'bearish'
-      pattern_name: item.patternname ?? null,   // e.g. 'deep crab'
-      pattern_class: item.patternclass ?? null, // 'harmonic' | 'chart' | ...
-      pattern_status: item.status ?? null,      // 'complete' | ...
-      symbol: item.displaySymbol ?? item.symbol ?? null,
-      broker_symbol: item.symbol ?? null,
-      timeframe: item.timeframe ?? null,
-      entry: item.entry ?? null,
-      stoploss: item.stoploss ?? null,
-      profit1: item.profit1 ?? null,
-      profit2: item.profit2 ?? null,
-      source_url: item.url ?? null,
-      payload: item,
-    }
+    const alert = normalizeAlert(item)
     await insertScannerAlert(alert)
     created.push(alert)
   }
@@ -412,6 +434,41 @@ app.post('/api/scanner-alerts', async (req, res) => {
   created.forEach(alert => broadcast('scanner_alert_received', alert))
 
   res.status(201).json({ received: created.length, alerts: created })
+})
+
+// Pull-based alternative to the webhook: fetch latest notifications directly
+// from harmonicpattern.com's API (GET /account/notification) using a stored
+// API key, and store only the ones we don't already have (dedup by source_id).
+app.post('/api/scanner-sync', async (req, res) => {
+  const apiKey = process.env.HARMONIC_API_KEY
+  if (!apiKey) return res.status(400).json({ error: 'HARMONIC_API_KEY not configured' })
+
+  let notifications
+  try {
+    const response = await fetch(`https://harmonicpattern.com/api/v1/account/notification?token=${apiKey}`)
+    if (!response.ok) {
+      return res.status(502).json({ error: `harmonicpattern.com responded ${response.status}` })
+    }
+    notifications = await response.json()
+  } catch (err) {
+    return res.status(502).json({ error: `Failed to reach harmonicpattern.com: ${err.message}` })
+  }
+
+  if (!Array.isArray(notifications)) {
+    return res.status(502).json({ error: 'Unexpected response shape from harmonicpattern.com', received: notifications })
+  }
+
+  const created = []
+  for (const item of notifications) {
+    const alert = normalizeAlert(item)
+    if (await scannerAlertExistsBySourceId(alert.source_id)) continue
+    await insertScannerAlert(alert)
+    created.push(alert)
+  }
+
+  created.forEach(alert => broadcast('scanner_alert_received', alert))
+
+  res.json({ fetched: notifications.length, created: created.length, alerts: created })
 })
 
 // GET alerts, optionally filtered by status (?status=pending)
