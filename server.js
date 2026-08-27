@@ -5,6 +5,7 @@ import pg from 'pg'
 import { randomUUID } from 'crypto'
 import { fileURLToPath } from 'url'
 import path from 'path'
+import { syncMyfxbook } from './myfxbook-sync.js'
 
 const { Pool } = pg
 
@@ -505,6 +506,36 @@ app.patch('/api/scanner-alerts/:id', async (req, res) => {
   res.json(updated)
 })
 
+// ---------- Myfxbook sync (5ers track record) ----------
+
+const MYFXBOOK_SYNC_DEPS = { readTrades, insertTrade, readPropFirm, writePropFirm, broadcast }
+const MYFXBOOK_SYNC_INTERVAL_MS = Number(process.env.MYFXBOOK_SYNC_INTERVAL_MS) || 15 * 60 * 1000
+let myfxbookSyncing = false
+
+async function runMyfxbookSync(trigger) {
+  if (myfxbookSyncing) return { skipped: true, reason: 'sync already running' }
+  myfxbookSyncing = true
+  try {
+    const result = await syncMyfxbook(MYFXBOOK_SYNC_DEPS)
+    if (!result.skipped) {
+      console.log(`[myfxbook] ${trigger}: +${result.inserted} trades, balance ${result.balance}`)
+    }
+    return result
+  } catch (err) {
+    console.error(`[myfxbook] ${trigger} failed:`, err.message)
+    return { skipped: false, error: err.message }
+  } finally {
+    myfxbookSyncing = false
+  }
+}
+
+// Manual trigger (same pattern as /api/scanner-sync)
+app.post('/api/myfxbook-sync', async (req, res) => {
+  const result = await runMyfxbookSync('manual')
+  if (result.error) return res.status(502).json(result)
+  res.json(result)
+})
+
 // stats endpoint (bonus)
 app.get('/api/stats', async (req, res) => {
   const trades = await readTrades()
@@ -552,6 +583,10 @@ initDb()
     app.listen(PORT, () => {
       console.log(`track_record API running on http://localhost:${PORT} (storage: ${pool ? 'postgres' : 'json files'})`)
     })
+
+    // First sync on boot, then every 15 min. No-op if MYFXBOOK_* env vars are unset.
+    runMyfxbookSync('startup')
+    setInterval(() => runMyfxbookSync('interval'), MYFXBOOK_SYNC_INTERVAL_MS)
   })
   .catch(err => {
     console.error('Failed to initialize database', err)
