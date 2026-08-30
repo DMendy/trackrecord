@@ -136,6 +136,7 @@ export async function syncMyfxbook(deps) {
   try {
     const accountsBody = await callApi('get-my-accounts', { session })
     const remote = accountsBody.accounts || []
+    const available = remote.map(r => ({ id: r.id, name: r.name, balance: r.balance }))
 
     const existing = await deps.readTrades()
     const knownRefs = new Set(existing.map(t => t.source_ref).filter(Boolean))
@@ -189,6 +190,7 @@ export async function syncMyfxbook(deps) {
     return {
       skipped: false,
       accounts: results,
+      available, // every account id/name Myfxbook exposes on this login
       inserted: totalInserted,
       last_sync: new Date().toISOString(),
     }
