@@ -410,12 +410,14 @@ function evaluatePlan(trade, allTrades, plan) {
   return breaches
 }
 
+const TELEGRAM_API_BASE = process.env.TELEGRAM_API_BASE || 'https://api.telegram.org'
+
 async function sendTelegram(text) {
   const token = process.env.TELEGRAM_BOT_TOKEN
   const chatId = process.env.TELEGRAM_CHAT_ID
   if (!token || !chatId) return { skipped: true }
   try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const res = await fetch(`${TELEGRAM_API_BASE}/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown', disable_web_page_preview: true }),
@@ -431,9 +433,10 @@ async function sendTelegram(text) {
   }
 }
 
-// Re-evaluate one trade against the plan: record fresh breaches (and ping
-// Telegram), resolve the ones that no longer apply. Called fire-and-forget from
-// the trade routes so the HTTP response isn't blocked on Telegram latency.
+// Re-evaluate one trade against the plan: record fresh breaches, resolve the
+// ones that no longer apply, keep the calendar badges in sync. Telegram is
+// handled separately by the notify* helpers. Called fire-and-forget from the
+// trade routes so the HTTP response isn't blocked.
 async function syncPlanViolations(trade) {
   const [plan, allTrades, existingAll] = await Promise.all([readPlan(), readTrades(), readViolations()])
   const breaches = evaluatePlan(trade, allTrades, plan)
@@ -467,10 +470,59 @@ async function syncPlanViolations(trade) {
     if (updated) broadcast('violation_updated', updated)
   }
 
-  if (fresh.length) {
-    const lines = fresh.map(v => `• ${v.message}`).join('\n')
-    await sendTelegram(`⚠️ *Plan non respecté*\n${trade.symbol ?? '?'} ${trade.direction ?? ''} · ${tradeDayKey(trade)}\n${lines}`)
+  return breaches
+}
+
+const fmtUsd = value => new Intl.NumberFormat('fr-FR', {
+  style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0,
+}).format(Number(value) || 0)
+
+// Balance = solde de depart du compte + somme des PnL clotures. Reflete le
+// trade qu'on vient de fermer tout de suite (le solde Myfxbook, lui, ne bouge
+// qu'a la prochaine sync).
+async function accountBalanceLive(accountId) {
+  const accounts = await readAccounts()
+  const acc = accounts.find(a => a.id === accountId)
+  if (!acc) return null
+  const trades = await readTrades()
+  const start = Number(acc.starting_balance) || Number(acc.account_size) || 0
+  const realized = trades
+    .filter(t => t.account_id === accountId && t.status !== 'open')
+    .reduce((s, t) => s + (Number(t.pnl_amount) || 0), 0)
+  return { label: acc.label, balance: start + realized }
+}
+
+// Notif Telegram a l'ouverture d'un trade : "plan respecte" ou "plan non respecte".
+async function notifyTradeOpened(trade) {
+  const [plan, allTrades, accounts] = await Promise.all([readPlan(), readTrades(), readAccounts()])
+  const breaches = evaluatePlan(trade, allTrades, plan)
+  const head = `${trade.symbol ?? '?'} ${trade.direction ?? ''}`.trim()
+  const meta = [
+    trade.rr != null ? `RR ${trade.rr}` : null,
+    trade.risk_pct != null ? `risque ${trade.risk_pct}%` : null,
+    trade.timeframe || null,
+  ].filter(Boolean).join(' · ')
+  const acc = accounts.find(a => a.id === trade.account_id)
+  const accLine = acc ? `\nCompte : ${acc.label}` : ''
+  if (breaches.length) {
+    const lines = breaches.map(b => `• ${b.message}`).join('\n')
+    await sendTelegram(`⚠️ *Trade pris — plan NON respecté*\n${head}${meta ? ' · ' + meta : ''}${accLine}\n${lines}`)
+  } else {
+    await sendTelegram(`✅ *Trade pris — plan respecté*\n${head}${meta ? ' · ' + meta : ''}${accLine}`)
   }
+}
+
+// Notif Telegram a la cloture : gain / perte + solde du compte.
+async function notifyTradeClosed(trade) {
+  if (!trade || trade.status === 'open') return
+  const pnl = Number(trade.pnl_amount) || 0
+  const icon = pnl > 0 ? '🟢' : pnl < 0 ? '🔴' : '⚪️'
+  const verdict = pnl > 0 ? 'Gain' : pnl < 0 ? 'Perte' : 'Break-even'
+  const head = `${trade.symbol ?? '?'} ${trade.direction ?? ''}`.trim()
+  const pct = trade.pnl_pct != null ? ` (${trade.pnl_pct}%)` : ''
+  const bal = await accountBalanceLive(trade.account_id)
+  const balLine = bal ? `\n${bal.label} : ${fmtUsd(bal.balance)}` : ''
+  await sendTelegram(`${icon} *${verdict} ${fmtUsd(pnl)}*${pct}\n${head}${balLine}`)
 }
 
 // ---------- Scanner alerts ----------
@@ -598,6 +650,7 @@ app.post('/api/trades', async (req, res) => {
   await insertTrade(trade)
   broadcast('trade_added', trade)
   syncPlanViolations(trade).catch(err => console.error('[plan]', err.message))
+  notifyTradeOpened(trade).catch(err => console.error('[telegram]', err.message))
 
   res.status(201).json(trade)
 })
@@ -639,21 +692,28 @@ app.patch('/api/trades/:id', async (req, res) => {
     }
   })
 
-  const updated = await updateTrade(req.params.id, current => ({
-    ...current,
-    ...updates,
-    updated_at: new Date().toISOString(),
-    closed_at: updates.status && updates.status !== 'open'
-      ? (current.closed_at ?? new Date().toISOString())
-      : updates.status === 'open'
-        ? null
-        : current.closed_at,
-  }))
+  let previous = null
+  const updated = await updateTrade(req.params.id, current => {
+    previous = current
+    return {
+      ...current,
+      ...updates,
+      updated_at: new Date().toISOString(),
+      closed_at: updates.status && updates.status !== 'open'
+        ? (current.closed_at ?? new Date().toISOString())
+        : updates.status === 'open'
+          ? null
+          : current.closed_at,
+    }
+  })
 
   if (!updated) return res.status(404).json({ error: 'not found' })
 
   broadcast('trade_updated', updated)
   syncPlanViolations(updated).catch(err => console.error('[plan]', err.message))
+  if (previous && previous.status === 'open' && updated.status && updated.status !== 'open') {
+    notifyTradeClosed(updated).catch(err => console.error('[telegram]', err.message))
+  }
   res.json(updated)
 })
 
@@ -876,7 +936,7 @@ app.patch('/api/scanner-alerts/:id', async (req, res) => {
 
 // ---------- Myfxbook sync (5ers track record) ----------
 
-const MYFXBOOK_SYNC_DEPS = { readTrades, insertTrade, readAccounts, writeAccounts, broadcast }
+const MYFXBOOK_SYNC_DEPS = { readTrades, insertTrade, readAccounts, writeAccounts, broadcast, notifyTradeClosed }
 const MYFXBOOK_SYNC_INTERVAL_MS = Number(process.env.MYFXBOOK_SYNC_INTERVAL_MS) || 15 * 60 * 1000
 let myfxbookSyncing = false
 

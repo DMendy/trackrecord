@@ -143,6 +143,9 @@ export async function syncMyfxbook(deps) {
     const nextAccounts = accounts.map(a => ({ ...a }))
     const results = []
     let totalInserted = 0
+    // Don't blast a Telegram notif for every historical fill on the first sync.
+    const firstEver = existing.length === 0
+    const RECENT_MS = 24 * 60 * 60 * 1000
 
     for (const acc of synced) {
       const match = remote.find(r => String(r.id) === String(acc.myfxbook_account_id))
@@ -166,6 +169,11 @@ export async function syncMyfxbook(deps) {
         deps.broadcast('trade_added', trade)
         knownRefs.add(ref)
         inserted += 1
+
+        const closedAt = trade.closed_at ? new Date(trade.closed_at).getTime() : 0
+        if (!firstEver && deps.notifyTradeClosed && trade.status !== 'open' && Date.now() - closedAt < RECENT_MS) {
+          deps.notifyTradeClosed(trade).catch(() => {})
+        }
       }
       totalInserted += inserted
 
