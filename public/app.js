@@ -247,6 +247,7 @@ createApp({
       violations: [],
       calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
       calendarAuto: true,
+      selectedDay: null,
     }
   },
 
@@ -423,12 +424,48 @@ createApp({
         compliancePct: analyzed ? Math.round((compliant / analyzed) * 100) : 0,
       }
     },
+
+    // Jours du mois qui ont des trades — utilise pour la vue liste (mobile).
+    calendarDays() {
+      const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'short' })
+      return this.calendarWeeks
+        .flatMap(week => week.cells)
+        .filter(cell => cell && cell.trades)
+        .map(cell => ({ ...cell, weekday: weekdayFmt.format(new Date(cell.dateKey + 'T00:00:00')) }))
+    },
+
+    selectedDayTrades() {
+      if (!this.selectedDay) return []
+      return this.scopedTrades
+        .filter(t => (t.closed_at || t.timestamp || '').slice(0, 10) === this.selectedDay)
+        .slice()
+        .sort((a, b) => new Date(a.closed_at || a.timestamp || 0) - new Date(b.closed_at || b.timestamp || 0))
+    },
+
+    selectedDayPnl() {
+      return this.selectedDayTrades.reduce((sum, t) => sum + (Number(t.pnl_amount) || 0), 0)
+    },
+
+    selectedDayViolations() {
+      if (!this.selectedDay) return []
+      return this.violations.filter(v =>
+        !v.resolved &&
+        (v.date || '').slice(0, 10) === this.selectedDay &&
+        (!this.activeAccountId || v.account_id === this.activeAccountId))
+    },
+
+    selectedDayLabel() {
+      if (!this.selectedDay) return ''
+      return new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+        .format(new Date(this.selectedDay + 'T00:00:00'))
+    },
   },
 
   mounted() {
     this.load()
     this.connectStream()
     mountPlanet(this.$refs.planetMount)
+    window.addEventListener('keydown', this.onKey)
   },
 
   methods: {
@@ -510,6 +547,28 @@ createApp({
     shiftMonth(delta) {
       this.calendarAuto = false
       this.calendarMonth = new Date(this.calendarMonth.getFullYear(), this.calendarMonth.getMonth() + delta, 1)
+    },
+
+    openDay(cell) {
+      if (!cell || !cell.trades) return
+      this.selectedDay = cell.dateKey
+    },
+
+    closeDay() {
+      this.selectedDay = null
+    },
+
+    onKey(event) {
+      if (event.key === 'Escape') this.closeDay()
+    },
+
+    pillarClass(pillars, key) {
+      const value = (pillars || {})[key]
+      return value === true ? 'ok' : value === 'partial' ? 'partial' : value == null ? 'na' : 'no'
+    },
+
+    tradeTone(trade) {
+      return trade.status === 'win' ? 'win' : trade.status === 'loss' ? 'loss' : ''
     },
 
     focusLatestTradeMonth() {
@@ -610,7 +669,8 @@ createApp({
                   v-for="(cell, ci) in week.cells"
                   :key="ci"
                   class="calendar-cell"
-                  :class="cell ? [cell.trades ? (cell.pnl >= 0 ? 'win has-data' : 'loss has-data') : '', cell.violations ? 'plan-breach' : ''] : 'empty'"
+                  :class="cell ? [cell.trades ? (cell.pnl >= 0 ? 'win has-data' : 'loss has-data') : '', cell.violations ? 'plan-breach' : '', cell.trades ? 'clickable' : ''] : 'empty'"
+                  @click="cell && cell.trades ? openDay(cell) : null"
                 >
                   <template v-if="cell">
                     <div class="calendar-day-row">
@@ -637,6 +697,28 @@ createApp({
               </template>
             </div>
           </div>
+
+          <ul class="calendar-list">
+            <li v-if="!calendarDays.length" class="calendar-list-empty">Aucun trade ce mois</li>
+            <li
+              v-for="d in calendarDays"
+              :key="d.dateKey"
+              class="calendar-list-row"
+              :class="[d.pnl >= 0 ? 'win' : 'loss', d.violations ? 'plan-breach' : '']"
+              @click="openDay(d)"
+            >
+              <div class="cl-date"><strong>{{ d.day }}</strong><span>{{ d.weekday }}</span></div>
+              <div class="cl-meta">
+                <span class="calendar-pnl">{{ money(d.pnl) }}</span>
+                <span class="calendar-trades">{{ d.trades }} trade{{ d.trades > 1 ? 's' : '' }}</span>
+              </div>
+              <span class="cl-marks">
+                <span v-if="d.violations" class="plan-flag">⚠</span>
+                <span class="discipline-dot" :class="'discipline-' + d.complianceTone"></span>
+              </span>
+            </li>
+          </ul>
+
           <div class="calendar-footer">
             <div class="calendar-stat tone-teal-mid"><span class="label">Trades ce mois</span><strong>{{ monthStats.trades }}</strong></div>
             <div class="calendar-stat tone-teal-deep"><span class="label">Win rate</span><strong>{{ monthStats.winRate }}%</strong></div>
@@ -679,6 +761,57 @@ createApp({
             <div v-else class="empty">Aucun trade analysé pour le moment</div>
           </article>
         </section>
+      </div>
+
+      <div v-if="selectedDay" class="day-modal" @click.self="closeDay">
+        <div class="day-modal-card">
+          <div class="day-modal-head">
+            <div>
+              <h3>{{ selectedDayLabel }}</h3>
+              <p class="day-modal-sub">
+                {{ selectedDayTrades.length }} trade{{ selectedDayTrades.length > 1 ? 's' : '' }} ·
+                <span :class="{ good: selectedDayPnl >= 0, bad: selectedDayPnl < 0 }">{{ money(selectedDayPnl) }}</span>
+              </p>
+            </div>
+            <button type="button" class="icon-btn" @click="closeDay">✕</button>
+          </div>
+
+          <div v-if="selectedDayViolations.length" class="day-breaches">
+            <p v-for="(v, i) in selectedDayViolations" :key="i">⚠ {{ v.message }}</p>
+          </div>
+
+          <div class="day-trades">
+            <article v-for="t in selectedDayTrades" :key="t.id" class="day-trade" :class="tradeTone(t)">
+              <div class="day-trade-top">
+                <span class="dt-symbol">{{ t.symbol }}</span>
+                <span class="dt-dir" :class="t.direction === 'SHORT' ? 'short' : 'long'">{{ t.direction }}</span>
+                <span v-if="t.timeframe" class="dt-tf">{{ t.timeframe }}</span>
+                <span class="dt-pnl" :class="{ good: (t.pnl_amount || 0) >= 0, bad: (t.pnl_amount || 0) < 0 }">
+                  {{ t.status === 'open' ? 'Ouvert' : money(t.pnl_amount) }}<template v-if="t.pnl_pct != null"> ({{ t.pnl_pct }}%)</template>
+                </span>
+              </div>
+              <div class="day-trade-grid">
+                <div v-if="t.entry != null"><span>Entrée</span>{{ t.entry }}</div>
+                <div v-if="t.sl != null"><span>SL</span>{{ t.sl }}</div>
+                <div v-if="t.tp1 != null"><span>TP1</span>{{ t.tp1 }}</div>
+                <div v-if="t.tp2 != null"><span>TP2</span>{{ t.tp2 }}</div>
+                <div v-if="t.rr != null"><span>RR</span>{{ t.rr }}</div>
+                <div v-if="t.risk_pct != null"><span>Risque</span>{{ t.risk_pct }}%</div>
+                <div v-if="t.note != null"><span>Note</span>{{ t.note }}/10</div>
+                <div v-if="t.session"><span>Session</span>{{ t.session }}</div>
+              </div>
+              <div class="day-trade-pillars">
+                <span class="pill" :class="pillarClass(t.pillars, 'prix')">Prix</span>
+                <span class="pill" :class="pillarClass(t.pillars, 'momentum')">Momentum</span>
+                <span class="pill" :class="pillarClass(t.pillars, 'structure')">Structure</span>
+              </div>
+              <p v-if="t.comment" class="day-trade-comment">{{ t.comment }}</p>
+              <a v-if="t.image_url" :href="assetUrl(t.image_url)" target="_blank" rel="noopener" class="day-trade-img">
+                <img :src="assetUrl(t.image_url)" alt="capture du trade" loading="lazy" />
+              </a>
+            </article>
+          </div>
+        </div>
       </div>
     </main>
   `,

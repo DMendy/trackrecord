@@ -826,6 +826,265 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
+.calendar-cell.clickable {
+  cursor: pointer;
+}
+
+.calendar-cell.clickable:hover {
+  border-color: rgba(163, 213, 211, 0.55);
+}
+
+/* ---------- Calendar list (mobile) ---------- */
+
+.calendar-list {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calendar-list-empty {
+  padding: 18px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.calendar-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.014);
+  cursor: pointer;
+}
+
+.calendar-list-row.win { border-left-color: var(--green); }
+.calendar-list-row.loss { border-left-color: var(--red); }
+.calendar-list-row.plan-breach { box-shadow: inset 0 0 0 1px rgba(255, 107, 102, 0.4); }
+
+.cl-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 42px;
+}
+
+.cl-date strong {
+  font-family: var(--font-mono);
+  font-size: 18px;
+}
+
+.cl-date span {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.cl-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.cl-marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------- Day detail modal ---------- */
+
+.day-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(3, 4, 8, 0.72);
+  backdrop-filter: blur(6px);
+  animation: rise 200ms ease both;
+}
+
+.day-modal-card {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: min(80vh, 720px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.day-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.day-modal-head h3 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.day-modal-sub {
+  margin-top: 4px;
+  color: var(--muted-2);
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+}
+
+.day-modal-sub .good { color: var(--green); }
+.day-modal-sub .bad { color: var(--red); }
+
+.day-breaches {
+  margin: 12px 18px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 107, 102, 0.35);
+  border-radius: var(--radius-sm);
+  background: var(--red-soft);
+}
+
+.day-breaches p {
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.day-trades {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 18px 18px;
+  overflow-y: auto;
+}
+
+.day-trade {
+  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+
+.day-trade.win { border-left-color: var(--green); }
+.day-trade.loss { border-left-color: var(--red); }
+
+.day-trade-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dt-symbol {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.dt-dir {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.dt-dir.long { background: rgba(79, 216, 160, 0.16); color: var(--green); }
+.dt-dir.short { background: rgba(255, 107, 102, 0.16); color: var(--red); }
+
+.dt-tf {
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.dt-pnl {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dt-pnl.good { color: var(--green); }
+.dt-pnl.bad { color: var(--red); }
+
+.day-trade-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin-top: 10px;
+}
+
+.day-trade-grid div {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.day-trade-grid span {
+  color: var(--muted);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.day-trade-pillars {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.day-trade-pillars .pill {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 650;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.pill.ok { background: rgba(79, 216, 160, 0.16); border-color: rgba(79, 216, 160, 0.4); color: var(--green); }
+.pill.partial { background: rgba(163, 213, 211, 0.14); border-color: rgba(163, 213, 211, 0.4); color: var(--teal-light); }
+.pill.no { background: rgba(255, 107, 102, 0.14); border-color: rgba(255, 107, 102, 0.4); color: var(--red); }
+
+.day-trade-comment {
+  margin-top: 10px;
+  color: var(--muted-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.day-trade-img {
+  display: block;
+  margin-top: 10px;
+}
+
+.day-trade-img img {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+
 .empty {
   display: grid;
   min-height: 90px;
@@ -962,7 +1221,7 @@ h1 {
     scroll-snap-align: start;
   }
 
-  .calendar-trades {
+  .calendar-scroll .calendar-trades {
     display: none;
   }
 
@@ -981,6 +1240,35 @@ h1 {
   }
 
   .calendar-footer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  /* En dessous de 640px, le calendrier grille est illisible : on bascule sur
+     la liste par jour. */
+  .calendar-scroll {
+    display: none;
+  }
+
+  .calendar-list {
+    display: flex;
+  }
+
+  .day-modal {
+    padding: 0;
+  }
+
+  .day-modal-card {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .day-trade-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
