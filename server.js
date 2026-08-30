@@ -966,7 +966,13 @@ const MYFXBOOK_SYNC_DEPS = {
   readTrades, insertTrade, readAccounts, writeAccounts, broadcast,
   notifyTradeClosed, notifyOpenPosition, syncPlanViolations, sendTelegram, fmtUsd,
 }
-const MYFXBOOK_SYNC_INTERVAL_MS = Number(process.env.MYFXBOOK_SYNC_INTERVAL_MS) || 15 * 60 * 1000
+// Reglable via MYFXBOOK_SYNC_INTERVAL_MS (defaut 15 min). Plancher a 60 s :
+// Myfxbook ne rafraichit ses donnees que toutes les quelques minutes de toute
+// facon, et un login/logout par minute est deja beaucoup.
+const MYFXBOOK_SYNC_INTERVAL_MS = Math.max(
+  60 * 1000,
+  Number(process.env.MYFXBOOK_SYNC_INTERVAL_MS) || 15 * 60 * 1000,
+)
 let myfxbookSyncing = false
 
 async function runMyfxbookSync(trigger) {
