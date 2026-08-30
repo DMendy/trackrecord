@@ -242,35 +242,56 @@ async function writeAccounts(list) {
   fs.writeFileSync(ACCOUNTS_PATH, JSON.stringify(list, null, 2))
 }
 
-// One-shot: Myfxbook trades imported before the multi-account split have no
-// account_id and an old-format source_ref (no account segment). Attach them to
-// account 1 and rewrite the ref so the next sync dedups instead of duplicating.
-// Idempotent — skips anything already carrying an account_id.
+// One-shot migration for the multi-account split:
+//  1. Myfxbook trades imported before the split have no account_id -> attach
+//     them to account 1 and rewrite source_ref to the new format.
+//  2. The first deploy of the split re-imported those trades once (the ref
+//     format changed), so drop the duplicates, keeping the oldest copy.
+// Idempotent: after it runs once there is nothing left to change.
 async function backfillTradeAccounts() {
   const accounts = await readAccounts()
   const firstId = accounts[0]?.id
   if (!firstId) return
 
-  const trades = await readTrades()
-  const pending = trades.filter(t => !t.account_id && t.source === 'myfxbook')
-  if (!pending.length) return
+  const trades = await readTrades() // oldest first (created_at ASC in pg)
+  const myfx = trades.filter(t => t.source === 'myfxbook')
+  if (!myfx.length) return
 
-  for (const t of pending) {
-    const next = { ...t, account_id: firstId }
-    if (typeof next.source_ref === 'string'
-      && next.source_ref.startsWith('myfxbook|')
-      && !next.source_ref.startsWith(`myfxbook|${firstId}|`)) {
-      next.source_ref = next.source_ref.replace(/^myfxbook\|/, `myfxbook|${firstId}|`)
+  const dedupeKey = t => [t.symbol, t.timestamp, t.closed_at, t.pnl_amount, t.direction].join('|')
+  const normRef = ref => (
+    typeof ref === 'string' && ref.startsWith('myfxbook|') && !ref.startsWith(`myfxbook|${firstId}|`)
+      ? ref.replace(/^myfxbook\|/, `myfxbook|${firstId}|`)
+      : ref
+  )
+
+  const seen = new Set()
+  const toDelete = []
+  const toUpdate = []
+  for (const t of myfx) {
+    const key = dedupeKey(t)
+    if (seen.has(key)) {
+      toDelete.push(t.id)
+      continue
     }
-    if (pool) {
-      await pool.query('UPDATE trades SET data = $1 WHERE id = $2', [next, t.id])
-    } else {
-      const idx = trades.findIndex(x => x.id === t.id)
-      if (idx !== -1) trades[idx] = next
+    seen.add(key)
+    const nextRef = normRef(t.source_ref)
+    if (t.account_id !== firstId || nextRef !== t.source_ref) {
+      toUpdate.push({ ...t, account_id: firstId, source_ref: nextRef })
     }
   }
-  if (!pool) fs.writeFileSync(DB_PATH, JSON.stringify(trades, null, 2))
-  console.log(`[migrate] backfilled account_id=${firstId} on ${pending.length} legacy trade(s)`)
+
+  if (!toUpdate.length && !toDelete.length) return
+
+  if (pool) {
+    for (const u of toUpdate) await pool.query('UPDATE trades SET data = $1 WHERE id = $2', [u, u.id])
+    for (const id of toDelete) await pool.query('DELETE FROM trades WHERE id = $1', [id])
+  } else {
+    const del = new Set(toDelete)
+    const upd = new Map(toUpdate.map(u => [u.id, u]))
+    const next = trades.filter(t => !del.has(t.id)).map(t => upd.get(t.id) || t)
+    fs.writeFileSync(DB_PATH, JSON.stringify(next, null, 2))
+  }
+  console.log(`[migrate] myfxbook: ${toUpdate.length} rattache(s) au compte ${firstId}, ${toDelete.length} doublon(s) supprime(s)`)
 }
 
 // Combined view used when no account is selected (the "Global" tab).
