@@ -242,6 +242,37 @@ async function writeAccounts(list) {
   fs.writeFileSync(ACCOUNTS_PATH, JSON.stringify(list, null, 2))
 }
 
+// One-shot: Myfxbook trades imported before the multi-account split have no
+// account_id and an old-format source_ref (no account segment). Attach them to
+// account 1 and rewrite the ref so the next sync dedups instead of duplicating.
+// Idempotent — skips anything already carrying an account_id.
+async function backfillTradeAccounts() {
+  const accounts = await readAccounts()
+  const firstId = accounts[0]?.id
+  if (!firstId) return
+
+  const trades = await readTrades()
+  const pending = trades.filter(t => !t.account_id && t.source === 'myfxbook')
+  if (!pending.length) return
+
+  for (const t of pending) {
+    const next = { ...t, account_id: firstId }
+    if (typeof next.source_ref === 'string'
+      && next.source_ref.startsWith('myfxbook|')
+      && !next.source_ref.startsWith(`myfxbook|${firstId}|`)) {
+      next.source_ref = next.source_ref.replace(/^myfxbook\|/, `myfxbook|${firstId}|`)
+    }
+    if (pool) {
+      await pool.query('UPDATE trades SET data = $1 WHERE id = $2', [next, t.id])
+    } else {
+      const idx = trades.findIndex(x => x.id === t.id)
+      if (idx !== -1) trades[idx] = next
+    }
+  }
+  if (!pool) fs.writeFileSync(DB_PATH, JSON.stringify(trades, null, 2))
+  console.log(`[migrate] backfilled account_id=${firstId} on ${pending.length} legacy trade(s)`)
+}
+
 // Combined view used when no account is selected (the "Global" tab).
 function combineAccounts(accounts) {
   const num = (v) => Number(v) || 0
@@ -902,6 +933,7 @@ app.get('/api/stats', async (req, res) => {
 })
 
 initDb()
+  .then(() => backfillTradeAccounts())
   .then(() => {
     app.listen(PORT, () => {
       console.log(`track_record API running on http://localhost:${PORT} (storage: ${pool ? 'postgres' : 'json files'})`)
