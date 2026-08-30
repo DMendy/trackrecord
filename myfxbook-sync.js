@@ -42,10 +42,12 @@ function parseMyfxbookDate(value) {
 }
 
 // Myfxbook history rows carry no id — build a stable key so re-syncs don't
-// duplicate trades.
-function sourceRef(row) {
+// duplicate trades. The account id is part of the key so the same fill copied
+// across two prop-firm accounts stays two distinct trades.
+function sourceRef(row, accountId) {
   return [
     'myfxbook',
+    accountId ?? '',
     row.openTime,
     row.closeTime,
     row.symbol,
@@ -56,7 +58,7 @@ function sourceRef(row) {
   ].join('|')
 }
 
-function mapHistoryRow(row, { startingBalance }) {
+function mapHistoryRow(row, { startingBalance, accountId }) {
   const profit = Number(row.profit) || 0
   const commission = Number(row.commission) || 0
   const interest = Number(row.interest) || 0
@@ -95,6 +97,7 @@ function mapHistoryRow(row, { startingBalance }) {
     risk_pct: null,
     position_size: row.sizing?.value ? Number(row.sizing.value) : null,
     prop_firm: true,
+    account_id: accountId ?? null,
     comment: row.comment || '',
     status: profit > 0 ? 'win' : profit < 0 ? 'loss' : 'breakeven',
     result_price: close,
@@ -102,7 +105,7 @@ function mapHistoryRow(row, { startingBalance }) {
     pnl_amount: +(profit + interest).toFixed(2),
     closed_at: closeTime,
     source: 'myfxbook',
-    source_ref: sourceRef(row),
+    source_ref: sourceRef(row, accountId),
   }
 }
 
@@ -110,70 +113,84 @@ function mapHistoryRow(row, { startingBalance }) {
  * @param {object} deps
  * @param {() => Promise<any[]>} deps.readTrades
  * @param {(trade: any) => Promise<any>} deps.insertTrade
- * @param {() => Promise<any>} deps.readPropFirm
- * @param {(config: any) => Promise<void>} deps.writePropFirm
+ * @param {() => Promise<any[]>} deps.readAccounts
+ * @param {(list: any[]) => Promise<void>} deps.writeAccounts
  * @param {(event: string, data: any) => void} deps.broadcast
  */
 export async function syncMyfxbook(deps) {
   const email = process.env.MYFXBOOK_EMAIL
   const password = process.env.MYFXBOOK_PASSWORD
-  const accountId = process.env.MYFXBOOK_ACCOUNT_ID
 
-  if (!email || !password || !accountId) {
-    return { skipped: true, reason: 'MYFXBOOK_EMAIL / MYFXBOOK_PASSWORD / MYFXBOOK_ACCOUNT_ID not configured' }
+  if (!email || !password) {
+    return { skipped: true, reason: 'MYFXBOOK_EMAIL / MYFXBOOK_PASSWORD not configured' }
+  }
+
+  const accounts = await deps.readAccounts()
+  const synced = accounts.filter(a => a.myfxbook_account_id)
+  if (!synced.length) {
+    return { skipped: true, reason: 'no account has a myfxbook_account_id' }
   }
 
   const session = await login(email, password)
 
   try {
-    // 1. Account snapshot -> prop firm balance / drawdown
     const accountsBody = await callApi('get-my-accounts', { session })
-    const account = (accountsBody.accounts || []).find(a => String(a.id) === String(accountId))
-    if (!account) throw new Error(`Myfxbook account id ${accountId} not found on this login`)
-
-    const propFirm = await readPropFirmSafe(deps)
-    const startingBalance = Number(propFirm.starting_balance) || Number(account.deposits) || 200000
-    const nextPropFirm = {
-      ...propFirm,
-      current_balance: +Number(account.balance).toFixed(2),
-      equity: +Number(account.equity).toFixed(2),
-      gain_pct: Number(account.gain),
-      drawdown_pct: Number(account.drawdown),
-      last_sync: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-
-    // 2. Closed trades
-    const historyBody = await callApi('get-history', { session, id: accountId })
-    const rows = (historyBody.history || []).filter(r => TRADE_ACTIONS.has(r.action))
+    const remote = accountsBody.accounts || []
 
     const existing = await deps.readTrades()
-    const priorPropFirmCount = existing.filter(t => t.prop_firm).length
     const knownRefs = new Set(existing.map(t => t.source_ref).filter(Boolean))
+    const nextAccounts = accounts.map(a => ({ ...a }))
+    const results = []
+    let totalInserted = 0
 
-    const inserted = []
-    // Myfxbook returns newest-first; insert oldest-first so equity curve order is stable.
-    for (const row of [...rows].reverse()) {
-      const ref = sourceRef(row)
-      if (knownRefs.has(ref)) continue
-      const trade = mapHistoryRow(row, { startingBalance })
-      await deps.insertTrade(trade)
-      deps.broadcast('trade_added', trade)
-      inserted.push(trade)
-      knownRefs.add(ref)
+    for (const acc of synced) {
+      const match = remote.find(r => String(r.id) === String(acc.myfxbook_account_id))
+      if (!match) {
+        results.push({ account: acc.label, error: `id ${acc.myfxbook_account_id} not found on this login` })
+        continue
+      }
+
+      const startingBalance = Number(acc.starting_balance) || Number(match.deposits) || Number(acc.account_size) || 200000
+
+      // Myfxbook returns newest-first; insert oldest-first so the equity curve stays ordered.
+      const historyBody = await callApi('get-history', { session, id: acc.myfxbook_account_id })
+      const rows = (historyBody.history || []).filter(r => TRADE_ACTIONS.has(r.action))
+
+      let inserted = 0
+      for (const row of [...rows].reverse()) {
+        const ref = sourceRef(row, acc.id)
+        if (knownRefs.has(ref)) continue
+        const trade = mapHistoryRow(row, { startingBalance, accountId: acc.id })
+        await deps.insertTrade(trade)
+        deps.broadcast('trade_added', trade)
+        knownRefs.add(ref)
+        inserted += 1
+      }
+      totalInserted += inserted
+
+      const idx = nextAccounts.findIndex(a => a.id === acc.id)
+      const priorCount = existing.filter(t => t.account_id === acc.id).length
+      nextAccounts[idx] = {
+        ...nextAccounts[idx],
+        current_balance: +Number(match.balance).toFixed(2),
+        equity: +Number(match.equity).toFixed(2),
+        gain_pct: Number(match.gain),
+        drawdown_pct: Number(match.drawdown),
+        trades_taken: priorCount + inserted,
+        last_sync: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      results.push({ account: acc.label, balance: nextAccounts[idx].current_balance, history_rows: rows.length, inserted })
     }
 
-    nextPropFirm.trades_taken = priorPropFirmCount + inserted.length
-    await deps.writePropFirm(nextPropFirm)
-    deps.broadcast('prop_firm_updated', nextPropFirm)
+    await deps.writeAccounts(nextAccounts)
+    deps.broadcast('accounts_updated', nextAccounts)
 
     return {
       skipped: false,
-      account: account.name,
-      balance: nextPropFirm.current_balance,
-      history_rows: rows.length,
-      inserted: inserted.length,
-      last_sync: nextPropFirm.last_sync,
+      accounts: results,
+      inserted: totalInserted,
+      last_sync: new Date().toISOString(),
     }
   } finally {
     // best-effort logout so sessions don't pile up
@@ -182,13 +199,5 @@ export async function syncMyfxbook(deps) {
     } catch {
       /* ignore */
     }
-  }
-}
-
-async function readPropFirmSafe(deps) {
-  try {
-    return (await deps.readPropFirm()) ?? {}
-  } catch {
-    return {}
   }
 }

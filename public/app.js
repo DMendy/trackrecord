@@ -14,6 +14,14 @@ function assetUrl(path) {
   return `${API}${path}`
 }
 
+function readStoredAccount() {
+  try {
+    return window.localStorage.getItem('trackrecord.account') || ''
+  } catch {
+    return ''
+  }
+}
+
 function mountPlanet(container) {
   if (!container) return () => {}
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -234,18 +242,34 @@ createApp({
     return {
       trades: [],
       stats: {},
-      propFirm: {},
+      accounts: [],
+      activeAccountId: readStoredAccount(),
+      violations: [],
       calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
       calendarAuto: true,
     }
   },
 
   computed: {
+    activeAccount() {
+      return this.accounts.find(a => a.id === this.activeAccountId) || null
+    },
+
+    scopedTrades() {
+      if (!this.activeAccountId) return this.trades
+      return this.trades.filter(trade => trade.account_id === this.activeAccountId)
+    },
+
+    balanceDisplay() {
+      if (this.activeAccount) return this.activeAccount.current_balance
+      return this.accounts.reduce((sum, a) => sum + (Number(a.current_balance) || 0), 0)
+    },
+
     pillarCompliance() {
       const isAnalyzed = pillars => pillars.prix != null || pillars.momentum != null || pillars.structure != null
-      const analyzed = this.trades.filter(trade => isAnalyzed(trade.pillars || {}))
+      const analyzed = this.scopedTrades.filter(trade => isAnalyzed(trade.pillars || {}))
       const total = analyzed.length
-      const pending = this.trades.length - total
+      const pending = this.scopedTrades.length - total
       if (!total) return { total: 0, pending, prixPct: 0, momentumPct: 0, structurePct: 0, fullPct: 0 }
       const score = value => (value === true ? 1 : value === 'partial' ? 0.5 : 0)
       let prixSum = 0
@@ -270,7 +294,7 @@ createApp({
     },
 
     closedTradesByDate() {
-      return this.trades
+      return this.scopedTrades
         .filter(trade => trade.status !== 'open')
         .slice()
         .sort((a, b) => new Date(a.closed_at || a.timestamp || 0) - new Date(b.closed_at || b.timestamp || 0))
@@ -318,7 +342,7 @@ createApp({
 
     dailyPnl() {
       const map = {}
-      this.trades.forEach(trade => {
+      this.scopedTrades.forEach(trade => {
         if (trade.status === 'open') return
         const dateKey = (trade.closed_at || trade.timestamp || '').slice(0, 10)
         if (!dateKey) return
@@ -338,6 +362,18 @@ createApp({
       return map
     },
 
+    violationsByDate() {
+      const map = {}
+      this.violations.forEach(v => {
+        if (v.resolved) return
+        if (this.activeAccountId && v.account_id !== this.activeAccountId) return
+        const key = (v.date || '').slice(0, 10)
+        if (!key) return
+        map[key] = (map[key] || 0) + 1
+      })
+      return map
+    },
+
     calendarWeeks() {
       const year = this.calendarMonth.getFullYear()
       const month = this.calendarMonth.getMonth()
@@ -352,7 +388,7 @@ createApp({
         const info = this.dailyPnl[dateKey]
         const compliancePct = info && info.analyzed ? Math.round((info.compliant / info.analyzed) * 100) : null
         const complianceTone = compliancePct === null ? '' : compliancePct >= 70 ? 'high' : compliancePct >= 40 ? 'mid' : 'low'
-        cells.push({ day, pnl: info ? info.pnl : 0, trades: info ? info.trades : 0, compliancePct, complianceTone })
+        cells.push({ day, dateKey, pnl: info ? info.pnl : 0, trades: info ? info.trades : 0, compliancePct, complianceTone, violations: this.violationsByDate[dateKey] || 0 })
       }
       while (cells.length % 7 !== 0) cells.push(null)
 
@@ -397,14 +433,35 @@ createApp({
 
   methods: {
     async load() {
-      const [trades, stats, propFirm] = await Promise.all([
+      const [trades, stats, accounts, violations] = await Promise.all([
         fetch(apiUrl('/api/trades')).then(r => r.json()),
-        fetch(apiUrl('/api/stats')).then(r => r.json()),
-        fetch(apiUrl('/api/prop-firm')).then(r => r.json()),
+        fetch(apiUrl('/api/stats' + this.accountQuery())).then(r => r.json()),
+        fetch(apiUrl('/api/accounts')).then(r => r.json()),
+        fetch(apiUrl('/api/violations')).then(r => r.json()),
       ])
       this.trades = trades
       this.stats = stats
-      this.propFirm = propFirm
+      this.accounts = Array.isArray(accounts) ? accounts : []
+      if (this.activeAccountId && !this.accounts.some(a => a.id === this.activeAccountId)) {
+        this.activeAccountId = ''
+      }
+      this.violations = Array.isArray(violations) ? violations.filter(v => !v.resolved) : []
+      this.focusLatestTradeMonth()
+    },
+
+    accountQuery() {
+      return this.activeAccountId ? `?account=${encodeURIComponent(this.activeAccountId)}` : ''
+    },
+
+    setAccount(id) {
+      this.activeAccountId = id
+      try {
+        window.localStorage.setItem('trackrecord.account', id)
+      } catch {
+        /* ignore */
+      }
+      this.calendarAuto = true
+      this.refreshStats()
       this.focusLatestTradeMonth()
     },
 
@@ -427,15 +484,27 @@ createApp({
       stream.addEventListener('trade_deleted', event => {
         const next = JSON.parse(event.data)
         this.trades = this.trades.filter(trade => trade.id !== next.id)
+        this.violations = this.violations.filter(v => v.trade_id !== next.id)
         this.refreshStats()
       })
-      stream.addEventListener('prop_firm_updated', event => {
-        this.propFirm = JSON.parse(event.data)
+      stream.addEventListener('accounts_updated', event => {
+        const next = JSON.parse(event.data)
+        if (Array.isArray(next)) this.accounts = next
+      })
+      stream.addEventListener('violation_added', event => {
+        const v = JSON.parse(event.data)
+        this.violations = [v, ...this.violations.filter(x => x.id !== v.id)]
+      })
+      stream.addEventListener('violation_updated', event => {
+        const v = JSON.parse(event.data)
+        this.violations = this.violations
+          .map(x => (x.id === v.id ? v : x))
+          .filter(x => !x.resolved)
       })
     },
 
     async refreshStats() {
-      this.stats = await fetch(apiUrl('/api/stats')).then(r => r.json())
+      this.stats = await fetch(apiUrl('/api/stats' + this.accountQuery())).then(r => r.json())
     },
 
     shiftMonth(delta) {
@@ -444,8 +513,8 @@ createApp({
     },
 
     focusLatestTradeMonth() {
-      if (!this.calendarAuto || !this.trades.length) return
-      const latest = this.trades.reduce((max, trade) => {
+      if (!this.calendarAuto || !this.scopedTrades.length) return
+      const latest = this.scopedTrades.reduce((max, trade) => {
         const date = new Date(trade.closed_at || trade.timestamp || 0)
         return date > max ? date : max
       }, new Date(0))
@@ -475,8 +544,19 @@ createApp({
           <div class="logo"><img src="/ceoverse-logo.png" alt="Ceoverse" /></div>
           <div>
             <h1>Trading Journal</h1>
-            <p class="subtitle">ATM · Track record · 5ers 200K</p>
+            <p class="subtitle">{{ activeAccount ? activeAccount.label : 'Tous comptes' }} · ATM</p>
           </div>
+        </div>
+        <div class="account-switch" v-if="accounts.length">
+          <button type="button" class="account-chip" :class="{ active: !activeAccountId }" @click="setAccount('')">Global</button>
+          <button
+            v-for="a in accounts"
+            :key="a.id"
+            type="button"
+            class="account-chip"
+            :class="{ active: activeAccountId === a.id }"
+            @click="setAccount(a.id)"
+          >{{ a.label }}</button>
         </div>
         <div class="top-actions">
           <span class="status-pill"><span class="live-dot"></span><span class="status-label">Live</span></span>
@@ -508,7 +588,7 @@ createApp({
           </div>
           <div class="metric tone-teal">
             <span class="metric-icon">$</span>
-            <div class="metric-body"><p class="label">Balance PF</p><div class="value">{{ money(propFirm.current_balance) }}</div></div>
+            <div class="metric-body"><p class="label">Balance PF</p><div class="value">{{ money(balanceDisplay) }}</div></div>
           </div>
         </section>
 
@@ -530,17 +610,24 @@ createApp({
                   v-for="(cell, ci) in week.cells"
                   :key="ci"
                   class="calendar-cell"
-                  :class="cell ? (cell.trades ? (cell.pnl >= 0 ? 'win has-data' : 'loss has-data') : '') : 'empty'"
+                  :class="cell ? [cell.trades ? (cell.pnl >= 0 ? 'win has-data' : 'loss has-data') : '', cell.violations ? 'plan-breach' : ''] : 'empty'"
                 >
                   <template v-if="cell">
                     <div class="calendar-day-row">
                       <span class="calendar-day">{{ cell.day }}</span>
-                      <span
-                        v-if="cell.trades"
-                        class="discipline-dot"
-                        :class="'discipline-' + cell.complianceTone"
-                        :title="cell.compliancePct + '% conforme au plan'"
-                      ></span>
+                      <span class="calendar-day-marks">
+                        <span
+                          v-if="cell.violations"
+                          class="plan-flag"
+                          :title="cell.violations + ' entorse(s) au plan'"
+                        >⚠</span>
+                        <span
+                          v-if="cell.trades"
+                          class="discipline-dot"
+                          :class="'discipline-' + cell.complianceTone"
+                          :title="cell.compliancePct + '% conforme au plan'"
+                        ></span>
+                      </span>
                     </div>
                     <span v-if="cell.trades" class="calendar-pnl">{{ money(cell.pnl) }}</span>
                     <span v-if="cell.trades" class="calendar-trades">{{ cell.trades }} trade{{ cell.trades > 1 ? 's' : '' }}</span>
