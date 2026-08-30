@@ -58,7 +58,7 @@ const DEFAULT_ACCOUNTS = [
     id: '26637976',
     label: '5ers 200K · 10%',
     provider: '5ers',
-    myfxbook_account_id: '26637976',
+    myfxbook_account_id: '12175704', // Myfxbook "pour dodo" (l'id 26637976 fourni au depart etait le login 5ers)
     account_size: 200000,
     phase: 'Step 1',
     starting_balance: 200000,
