@@ -58,6 +58,11 @@ function sourceRef(row, accountId) {
   ].join('|')
 }
 
+// Ref stable pour une position ouverte (pas d'id cote Myfxbook non plus).
+function openRef(accountId, row) {
+  return ['open', accountId ?? '', row.openTime, row.symbol, row.action, row.openPrice].join('|')
+}
+
 function mapHistoryRow(row, { startingBalance, accountId }) {
   const profit = Number(row.profit) || 0
   const commission = Number(row.commission) || 0
@@ -143,9 +148,9 @@ export async function syncMyfxbook(deps) {
     const nextAccounts = accounts.map(a => ({ ...a }))
     const results = []
     let totalInserted = 0
-    // Don't blast a Telegram notif for every historical fill on the first sync.
+    // Sur le tout premier sync, tout l'historique arrive d'un coup : on
+    // enregistre en silence (pas de notif).
     const firstEver = existing.length === 0
-    const RECENT_MS = 24 * 60 * 60 * 1000
 
     for (const acc of synced) {
       const match = remote.find(r => String(r.id) === String(acc.myfxbook_account_id))
@@ -154,13 +159,16 @@ export async function syncMyfxbook(deps) {
         continue
       }
 
+      const idx = nextAccounts.findIndex(a => a.id === acc.id)
       const startingBalance = Number(acc.starting_balance) || Number(match.deposits) || Number(acc.account_size) || 200000
 
-      // Myfxbook returns newest-first; insert oldest-first so the equity curve stays ordered.
+      // ---- Trades clotures (historique) ----
+      // Myfxbook renvoie du plus recent au plus ancien ; on insere l'inverse
+      // pour garder la courbe d'equity ordonnee.
       const historyBody = await callApi('get-history', { session, id: acc.myfxbook_account_id })
       const rows = (historyBody.history || []).filter(r => TRADE_ACTIONS.has(r.action))
 
-      let inserted = 0
+      const insertedTrades = []
       for (const row of [...rows].reverse()) {
         const ref = sourceRef(row, acc.id)
         if (knownRefs.has(ref)) continue
@@ -168,16 +176,10 @@ export async function syncMyfxbook(deps) {
         await deps.insertTrade(trade)
         deps.broadcast('trade_added', trade)
         knownRefs.add(ref)
-        inserted += 1
-
-        const closedAt = trade.closed_at ? new Date(trade.closed_at).getTime() : 0
-        if (!firstEver && deps.notifyTradeClosed && trade.status !== 'open' && Date.now() - closedAt < RECENT_MS) {
-          deps.notifyTradeClosed(trade).catch(() => {})
-        }
+        insertedTrades.push(trade)
       }
-      totalInserted += inserted
+      totalInserted += insertedTrades.length
 
-      const idx = nextAccounts.findIndex(a => a.id === acc.id)
       const priorCount = existing.filter(t => t.account_id === acc.id).length
       nextAccounts[idx] = {
         ...nextAccounts[idx],
@@ -185,11 +187,64 @@ export async function syncMyfxbook(deps) {
         equity: +Number(match.equity).toFixed(2),
         gain_pct: Number(match.gain),
         drawdown_pct: Number(match.drawdown),
-        trades_taken: priorCount + inserted,
+        trades_taken: priorCount + insertedTrades.length,
         last_sync: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
-      results.push({ account: acc.label, balance: nextAccounts[idx].current_balance, history_rows: rows.length, inserted })
+
+      // Check du plan sur les trades fraichement importes (attrape le "2+/jour/compte").
+      const freshBreaches = []
+      if (!firstEver && deps.syncPlanViolations) {
+        for (const t of insertedTrades) {
+          try {
+            const b = await deps.syncPlanViolations(t)
+            if (Array.isArray(b)) freshBreaches.push(...b.map(x => x.message))
+          } catch { /* ignore */ }
+        }
+      }
+
+      // Notif cloture : une par trade si petit lot, un resume si gros rattrapage.
+      if (!firstEver && insertedTrades.length && deps.notifyTradeClosed) {
+        if (insertedTrades.length <= 3) {
+          for (const t of insertedTrades) deps.notifyTradeClosed(t).catch(() => {})
+        } else if (deps.sendTelegram) {
+          const sum = insertedTrades.reduce((s, t) => s + (Number(t.pnl_amount) || 0), 0)
+          const money = deps.fmtUsd ? deps.fmtUsd(sum) : String(sum)
+          deps.sendTelegram(`📥 *${insertedTrades.length} trades importés* — ${acc.label}\nPnL total : ${money}`).catch(() => {})
+        }
+      }
+      if (freshBreaches.length && deps.sendTelegram) {
+        const uniq = [...new Set(freshBreaches)].map(m => `• ${m}`).join('\n')
+        deps.sendTelegram(`⚠️ *Plan non respecté* — ${acc.label}\n${uniq}`).catch(() => {})
+      }
+
+      // ---- Positions ouvertes ----
+      const openInfo = { count: 0, new: 0 }
+      try {
+        const openBody = await callApi('get-open-trades', { session, id: acc.myfxbook_account_id })
+        const openRows = (openBody.openTrades || []).filter(r => TRADE_ACTIONS.has(r.action))
+        const currentRefs = openRows.map(r => openRef(acc.id, r))
+        openInfo.count = currentRefs.length
+        const prev = Array.isArray(acc.open_refs) ? new Set(acc.open_refs) : null // null = jamais suivi
+        if (prev && !firstEver && deps.notifyOpenPosition) {
+          for (const r of openRows) {
+            if (prev.has(openRef(acc.id, r))) continue
+            openInfo.new += 1
+            deps.notifyOpenPosition(acc.label, r).catch(() => {})
+          }
+        }
+        nextAccounts[idx].open_refs = currentRefs
+      } catch (err) {
+        openInfo.error = err.message
+      }
+
+      results.push({
+        account: acc.label,
+        balance: nextAccounts[idx].current_balance,
+        history_rows: rows.length,
+        inserted: insertedTrades.length,
+        open: openInfo,
+      })
     }
 
     await deps.writeAccounts(nextAccounts)

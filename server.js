@@ -525,6 +525,17 @@ async function notifyTradeClosed(trade) {
   await sendTelegram(`${icon} *${verdict} ${fmtUsd(pnl)}*${pct}\n${head}${balLine}`)
 }
 
+// Notif Telegram quand une position s'ouvre (detectee via l'API Myfxbook open-trades).
+async function notifyOpenPosition(accountLabel, row) {
+  const dir = row.action === 'Sell' ? 'SHORT' : 'LONG'
+  const bits = [
+    row.openPrice ? `entrée ${row.openPrice}` : null,
+    Number(row.sl) ? `SL ${row.sl}` : null,
+    Number(row.tp) ? `TP ${row.tp}` : null,
+  ].filter(Boolean).join(' · ')
+  await sendTelegram(`🔵 *Position ouverte* — ${row.symbol ?? '?'} ${dir}\nCompte : ${accountLabel}${bits ? '\n' + bits : ''}`)
+}
+
 // ---------- Scanner alerts ----------
 
 async function readScannerAlerts() {
@@ -802,6 +813,21 @@ app.get('/api/violations', async (req, res) => {
   res.json(all.filter(v => Boolean(v.resolved) === want))
 })
 
+// ---------- Telegram ----------
+
+app.get('/api/telegram/status', (req, res) => {
+  res.json({
+    has_token: Boolean(process.env.TELEGRAM_BOT_TOKEN),
+    has_chat_id: Boolean(process.env.TELEGRAM_CHAT_ID),
+    configured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+  })
+})
+
+app.post('/api/telegram/test', async (req, res) => {
+  const result = await sendTelegram(`🔔 Test — ${new Date().toISOString()}`)
+  res.json(result)
+})
+
 // Webhook receiver for harmonicpattern.com (or any scanner) pattern alerts.
 // Payload shape is not assumed beyond the known { msg_type, data: [...] } shape —
 // unrecognized fields are kept under `payload` so Claude can interpret them.
@@ -936,7 +962,10 @@ app.patch('/api/scanner-alerts/:id', async (req, res) => {
 
 // ---------- Myfxbook sync (5ers track record) ----------
 
-const MYFXBOOK_SYNC_DEPS = { readTrades, insertTrade, readAccounts, writeAccounts, broadcast, notifyTradeClosed }
+const MYFXBOOK_SYNC_DEPS = {
+  readTrades, insertTrade, readAccounts, writeAccounts, broadcast,
+  notifyTradeClosed, notifyOpenPosition, syncPlanViolations, sendTelegram, fmtUsd,
+}
 const MYFXBOOK_SYNC_INTERVAL_MS = Number(process.env.MYFXBOOK_SYNC_INTERVAL_MS) || 15 * 60 * 1000
 let myfxbookSyncing = false
 
